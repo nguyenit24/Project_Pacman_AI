@@ -4,7 +4,7 @@ class Player:
         self.x = x
         self.y = y
         self.direction = 0
-        self.speed = 2
+        self.speed = 3
         self.images = [pygame.transform.scale(pygame.image.load(f'assets/player_images/{i}.png'), (45, 45)) 
                       for i in range(1, 5)]
         self.lives = 3

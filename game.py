@@ -43,23 +43,19 @@ class Game:
         self.start_time = None
         self.bfs_times = []
         self.astar_times = []
+        self.backtracking_times = []
+        self.menu = True  # Add menu state
 
-        self.eaten_ghost = [False, False, False, False]
-        self.ghost_speeds = [1, 1, 1, 1]
+        self.eaten_ghost = [False]  # Only one ghost
+        self.ghost_speeds = [1]  # Only one ghost speed
         self.startup_counter_ghost = 0
 
-        # Tải hình ảnh cho ghosts
+        # Tải hình ảnh cho ghost
         self.blinky_img = pygame.transform.scale(pygame.image.load("assets/ghost_images/red.png"), (45, 45))
-        self.pinky_img = pygame.transform.scale(pygame.image.load("assets/ghost_images/pink.png"), (45, 45))
-        self.inky_img = pygame.transform.scale(pygame.image.load("assets/ghost_images/blue.png"), (45, 45))
-        self.clyde_img = pygame.transform.scale(pygame.image.load("assets/ghost_images/orange.png"), (45, 45))
 
-        # Khởi tạo 4 ghosts
+        # Khởi tạo 1 ghost
         self.ghosts = [
-            Ghost(450, 400, (self.player.x, self.player.y), self.ghost_speeds[0], self.blinky_img, 0, False, True, 0, self.level),
-            Ghost(400, 400, (self.player.x, self.player.y), self.ghost_speeds[1], self.pinky_img, 0, False, True, 1, self.level),
-            Ghost(500, 400, (self.player.x, self.player.y), self.ghost_speeds[2], self.inky_img, 0, False, True, 2, self.level),
-            Ghost(450, 450, (self.player.x, self.player.y), self.ghost_speeds[3], self.clyde_img, 0, False, True, 3, self.level),
+            Ghost(450, 400, (self.player.x, self.player.y), self.ghost_speeds[0], self.blinky_img, 0, False, True, 0, self.level)
         ]
 
         try:
@@ -70,46 +66,40 @@ class Game:
             self.menu_background.fill((0, 0, 0))
 
     def draw_menu(self):
+        """
+        Hiển thị menu chính với các chế độ chơi.
+        """
         self.screen.blit(self.menu_background, (0, 0))
-        margin = self.WIDTH_SCREEN * 0.1
-        maze_top = self.HEIGHT * 0.05
-        maze_bottom = self.HEIGHT * 0.95
+        title_font = pygame.font.Font("freesansbold.ttf", 50)
+        menu_font = pygame.font.Font("freesansbold.ttf", 30)
 
-        pygame.draw.line(self.screen, (0, 0, 255), (margin, maze_top), (self.WIDTH_SCREEN - margin, maze_top), 5)
-        pygame.draw.line(self.screen, (0, 0, 255), (margin, maze_bottom), (self.WIDTH_SCREEN - margin, maze_bottom), 5)  #
-        pygame.draw.line(self.screen, (0, 0, 255), (margin * 2, maze_top), (margin * 2, maze_bottom), 5)
-        pygame.draw.line(self.screen, (0, 0, 255), (self.WIDTH_SCREEN - margin * 2, maze_top), (self.WIDTH_SCREEN - margin * 2, maze_bottom), 5)
+        # Tiêu đề
+        title_text = title_font.render("PAC-MAN AI GAME", True, "yellow")
+        title_rect = title_text.get_rect(center=(self.WIDTH_SCREEN // 2, self.HEIGHT * 0.2))
+        self.screen.blit(title_text, title_rect)
 
-        dot_spacing = self.WIDTH_SCREEN // 12
-        for x in range(int(margin + dot_spacing), int(self.WIDTH_SCREEN - margin), dot_spacing):
-            pygame.draw.circle(self.screen, (255, 255, 255), (x, int(maze_top + 50)), 5)
-            pygame.draw.circle(self.screen, (255, 255, 255), (x, int(maze_bottom - 50)), 5)
+        # Các chế độ chơi
+        modes = [
+            {"text": "1. Manual Control", "key": pygame.K_1, "desc": "Use arrow keys to play"},
+            {"text": "2. BFS Algorithm", "key": pygame.K_2, "desc": "AI with Breadth-First Search"},
+            {"text": "3. A* Algorithm", "key": pygame.K_3, "desc": "AI with A* Search"},
+            {"text": "4. Backtracking", "key": pygame.K_4, "desc": "AI with Backtracking"},
+            {"text": "5. Genetic Algorithm", "key": pygame.K_5, "desc": "AI with Genetic Algorithm"}
+        ]
 
-        pacman_size = self.WIDTH_SCREEN * 0.05
-        pacman_x = margin
-        pacman_y = self.HEIGHT * 0.1
-        pygame.draw.circle(self.screen, (255, 255, 0), (int(pacman_x), int(pacman_y)), int(pacman_size))
-        pygame.draw.polygon(self.screen, (0, 0, 20), [(int(pacman_x), int(pacman_y)), (int(pacman_x + pacman_size * 1.5), int(pacman_y - pacman_size * 0.5)), (int(pacman_x + pacman_size * 1.5), int(pacman_y + pacman_size * 0.5))])
-
-        modes = [{"text": "Manual Control", "key": pygame.K_1, "desc": "Use arrow keys to play"}, {"text": "BFS Algorithm", "key": pygame.K_2, "desc": "AI with Breadth-First Search"}, {"text": "A* Algorithm", "key": pygame.K_3, "desc": "AI with A* Search"}]
-
-        menu_font = pygame.font.Font("freesansbold.ttf", 40)
-        desc_font = pygame.font.Font("freesansbold.ttf", 20)
-        start_y = self.HEIGHT * 0.35  # Bắt đầu từ 35% chiều cao
-        spacing = self.HEIGHT * 0.15  # Khoảng cách là 15% chiều cao
+        start_y = self.HEIGHT * 0.35  # Vị trí bắt đầu hiển thị các chế độ
+        spacing = self.HEIGHT * 0.1  # Khoảng cách giữa các chế độ
 
         for i, mode in enumerate(modes):
-            mode_text = menu_font.render(f"{i+1}. {mode['text']}", True, "blue")
+            # Hiển thị tên chế độ
+            mode_text = menu_font.render(mode["text"], True, "white")
             mode_rect = mode_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing))
-
-            desc_text = desc_font.render(mode["desc"], True, "gray")
-            desc_rect = desc_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing + 40))
-
-            keys = pygame.key.get_pressed()
-            if keys[mode["key"]]:
-                mode_text = menu_font.render(f"{i+1}. {mode['text']}", True, "yellow")
-
             self.screen.blit(mode_text, mode_rect)
+
+            # Hiển thị mô tả chế độ
+            desc_font = pygame.font.Font("freesansbold.ttf", 20)
+            desc_text = desc_font.render(mode["desc"], True, "gray")
+            desc_rect = desc_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing + 30))
             self.screen.blit(desc_text, desc_rect)
 
         pygame.display.flip()
@@ -152,6 +142,12 @@ class Game:
         for i, t in enumerate(self.astar_times[:4]):  # Giới hạn 4 dòng
             astar_time_text = self.font.render(f"{i+1}. {t:.2f}", True, "yellow")
             self.screen.blit(astar_time_text, (self.WIDTH_SCREEN - 150, 200 + i * 20))
+
+        backtracking_title = self.font.render("Backtracking:", True, "yellow")
+        self.screen.blit(backtracking_title, (self.WIDTH_SCREEN - 150, 280))
+        for i, t in enumerate(self.backtracking_times[:4]):  # Giới hạn 4 dòng
+            backtracking_time_text = self.font.render(f"{i+1}. {t:.2f}", True, "yellow")
+            self.screen.blit(backtracking_time_text, (self.WIDTH_SCREEN - 150, 300 + i * 20))
 
     def draw_board(self):
         num1 = (self.HEIGHT - 50) // 32
@@ -237,7 +233,8 @@ class Game:
             turns[0] = True
             turns[1] = True
         return turns
-
+    def heuristic(self, pos1, pos2):
+        return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
     # Tìm tọa độ đang trong ô lưới nào trong bản đồ 30x32 ô
     def get_grid_pos(self, x, y):
         num1 = (self.HEIGHT - 50) // 32
@@ -291,17 +288,7 @@ class Game:
                         self.path_to_target = None
                         self.current_target_index = 0
                         # Đặt lại vị trí và trạng thái các ghost
-                        self.ghosts[0].x_pos, self.ghosts[0].y_pos = 56, 58
-                        self.ghosts[0].direction = 0
-                        self.ghosts[1].x_pos, self.ghosts[1].y_pos = 440, 388
-                        self.ghosts[1].direction = 2
-                        self.ghosts[2].x_pos, self.ghosts[2].y_pos = 440, 438
-                        self.ghosts[2].direction = 2
-                        self.ghosts[3].x_pos, self.ghosts[3].y_pos = 440, 438
-                        self.ghosts[3].direction = 2
-                        self.eaten_ghost = [False, False, False, False]
-                        for ghost in self.ghosts:
-                            ghost.dead = False
+                        self.ghosts[0].dead = False
                         return True  # Trả về True để báo hiệu cần reset
                     else:
                         self.game_over = True
@@ -322,17 +309,7 @@ class Game:
                         self.player.y = 663
                         self.player.direction = 0
                         self.direction_command = 0
-                        self.ghosts[0].x_pos, self.ghosts[0].y_pos = 56, 58
-                        self.ghosts[0].direction = 0
-                        self.ghosts[1].x_pos, self.ghosts[1].y_pos = 440, 388
-                        self.ghosts[1].direction = 2
-                        self.ghosts[2].x_pos, self.ghosts[2].y_pos = 440, 438
-                        self.ghosts[2].direction = 2
-                        self.ghosts[3].x_pos, self.ghosts[3].y_pos = 440, 438
-                        self.ghosts[3].direction = 2
-                        self.eaten_ghost = [False, False, False, False]
-                        for ghost in self.ghosts:
-                            ghost.dead = False
+                        self.ghosts[0].dead = False
                         return True
                     else:
                         self.game_over = True
@@ -372,9 +349,6 @@ class Game:
 
         # Lấy vị trí của các ghost từ danh sách self.ghosts
         blink_x, blink_y = self.ghosts[0].x_pos, self.ghosts[0].y_pos  # Blinky
-        ink_x, ink_y = self.ghosts[1].x_pos, self.ghosts[1].y_pos  # Pinky (đổi thành Inky)
-        pink_x, pink_y = self.ghosts[2].x_pos, self.ghosts[2].y_pos  # Inky (đổi thành Pinky)
-        clyd_x, clyd_y = self.ghosts[3].x_pos, self.ghosts[3].y_pos  # Clyde
 
         # Xác định vị trí chạy trốn của ma
         if player_x < 450:
@@ -391,86 +365,18 @@ class Game:
         # Logic mục tiêu khi có powerup
         if self.powerup:
             # Blinky (ghost[0])
-            if not self.ghosts[0].dead and not self.eaten_ghost[0]:
+            if not self.ghosts[0].dead:
                 blink_target = (runaway_x, runaway_y)  # Blinky chạy trốn
-            elif not self.ghosts[0].dead and self.eaten_ghost[0]:
-                if 340 < blink_x < 560 and 340 < blink_y < 500:
-                    blink_target = (400, 100)
-                else:
-                    blink_target = (player_x, player_y)
             else:
                 blink_target = return_target
-
-            # Inky (ghost[1], trước đây là Pinky)
-            if not self.ghosts[1].dead and not self.eaten_ghost[1]:
-                ink_target = (runaway_x, player_y)  # Inky chạy trốn
-            elif not self.ghosts[1].dead and self.eaten_ghost[1]:
-                if 340 < ink_x < 560 and 340 < ink_y < 500:
-                    ink_target = (400, 100)
-                else:
-                    ink_target = (player_x, player_y)
-            else:
-                ink_target = return_target
-
-            # Pinky (ghost[2], trước đây là Inky)
-            if not self.ghosts[2].dead and not self.eaten_ghost[2]:
-                pink_target = (player_x, runaway_y)  # Pinky chạy trốn
-            elif not self.ghosts[2].dead and self.eaten_ghost[2]:
-                if 340 < pink_x < 560 and 340 < pink_y < 500:
-                    pink_target = (400, 100)
-                else:
-                    pink_target = (player_x, player_y)
-            else:
-                pink_target = return_target
-
-            # Clyde (ghost[3])
-            if not self.ghosts[3].dead and not self.eaten_ghost[3]:
-                clyd_target = (450, 450)  # Clyde chạy trốn
-            elif not self.ghosts[3].dead and self.eaten_ghost[3]:
-                if 340 < clyd_x < 560 and 340 < clyd_y < 500:
-                    clyd_target = (400, 100)
-                else:
-                    clyd_target = (player_x, player_y)
-            else:
-                clyd_target = return_target
         else:  # Nếu không có powerup
             # Blinky
             if not self.ghosts[0].dead:
-                if 340 < blink_x < 560 and 340 < blink_y < 500:
-                    blink_target = (400, 100)
-                else:
-                    blink_target = (player_x, player_y)  # Blinky đuổi Pac-Man
+                blink_target = (player_x, player_y)  # Blinky đuổi Pac-Man
             else:
                 blink_target = return_target
 
-            # Inky
-            if not self.ghosts[1].dead:
-                if 340 < ink_x < 560 and 340 < ink_y < 500:
-                    ink_target = (400, 100)
-                else:
-                    ink_target = (player_x, player_y)  # Inky đuổi Pac-Man
-            else:
-                ink_target = return_target
-
-            # Pinky
-            if not self.ghosts[2].dead:
-                if 340 < pink_x < 560 and 340 < pink_y < 500:
-                    pink_target = (400, 100)
-                else:
-                    pink_target = (player_x, player_y)  # Pinky đuổi Pac-Man
-            else:
-                pink_target = return_target
-
-            # Clyde
-            if not self.ghosts[3].dead:
-                if 340 < clyd_x < 560 and 340 < clyd_y < 500:
-                    clyd_target = (400, 100)
-                else:
-                    clyd_target = (player_x, player_y)  # Clyde đuổi Pac-Man
-            else:
-                clyd_target = return_target
-
-        return [blink_target, ink_target, pink_target, clyd_target]
+        return [blink_target]
 
     def reset(self):
         self.powerup = False
@@ -489,53 +395,173 @@ class Game:
         self.game_duration = 0
         self.start_time = None
         # Đặt lại ghosts
-        self.eaten_ghost = [False, False, False, False]
+        self.eaten_ghost = [False]
         self.startup_counter_ghost = 0
 
         self.ghosts = [
-            Ghost(450, 400, (self.player.x, self.player.y), self.ghost_speeds[0], self.blinky_img, 0, False, True, 0, self.level),
-            Ghost(400, 400, (self.player.x, self.player.y), self.ghost_speeds[1], self.pinky_img, 0, False, True, 1, self.level),
-            Ghost(500, 400, (self.player.x, self.player.y), self.ghost_speeds[2], self.inky_img, 0, False, True, 2, self.level),
-            Ghost(450, 450, (self.player.x, self.player.y), self.ghost_speeds[3], self.clyde_img, 0, False, True, 3, self.level),
+            Ghost(450, 400, (self.player.x, self.player.y), self.ghost_speeds[0], self.blinky_img, 0, False, True, 0, self.level)
         ]
 
     def run(self):
         run = True
-        in_menu = True
         while run:
             self.timer.tick(self.fps)
             self.screen.fill("black")
 
-            if in_menu:
-                self.draw_menu()  # Hàm vẽ menu, tự định nghĩa theo ý bạn
+            if self.menu:
+                self.draw_menu()
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         run = False
                     elif event.type == pygame.KEYDOWN:
-                        # Ví dụ: 1 - Manual, 2 - BFS, 3 - A*
-                        if event.key == pygame.K_1:
-                            in_menu = False
-                            self.run_manual()  # Hàm run_manual được tách riêng
-                        elif event.key == pygame.K_2:
-                            in_menu = False
+                        if event.key == pygame.K_1:  # Manual Control
+                            self.menu = False
+                            self.run_manual()
+                        elif event.key == pygame.K_2:  # BFS Algorithm
+                            self.menu = False
                             self.run_BFS()
-                        elif event.key == pygame.K_3:
-                            in_menu = False
+                        elif event.key == pygame.K_3:  # A* Algorithm
+                            self.menu = False
                             self.run_A_star()
+                        elif event.key == pygame.K_4:  # Backtracking
+                            self.menu = False
+                            self.run_backtracking()
+                        elif event.key == pygame.K_5:  # Genetic Algorithm
+                            self.menu = False
+                            self.run_genetic()
             else:
-                # Nếu game kết thúc, bạn có thể hiển thị menu lại bằng cách reset game và set in_menu = True
+                # Nếu game kết thúc, quay về menu
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
                         run = False
                     elif event.type == pygame.KEYDOWN:
                         # Nhấn SPACE để về lại menu
-                        if event.key == pygame.K_SPACE:
+                        if event.key == pygame.K_SPACE and (self.game_over or self.game_won):
                             self.reset()  # Hàm reset để khởi tạo lại trạng thái game
-                            in_menu = True
+                            self.menu = True
 
             pygame.display.flip()
         pygame.quit()
+    def run_manual(self):
+        run = True
+        self.game_mode = 0  # Chế độ điều khiển tay
+        self.start_time = pygame.time.get_ticks()  # Bắt đầu đếm thời gian
+        moving = False
 
+        while run:
+            self.timer.tick(self.fps)
+
+            # Cập nhật thời gian game nếu chưa thắng hay game over
+            if self.start_time is None:
+                self.start_time = pygame.time.get_ticks()
+            if not self.game_won and not self.game_over:
+                current_time = pygame.time.get_ticks()
+                self.game_duration = (current_time - self.start_time) / 1000.0  # tính bằng giây
+
+            # Cập nhật các trạng thái nhấp nháy cũng như powerup
+            if self.counter < 19:
+                self.counter += 1
+                if self.counter > 3:
+                    self.flicker = False
+            else:
+                self.counter = 0
+                self.flicker = True
+
+            if self.powerup and self.power_counter < 600:
+                self.power_counter += 1
+            elif self.powerup and self.power_counter >= 600:
+                self.power_counter = 0
+                self.powerup = False
+
+            # Xử lý startup: không cho di chuyển ngay lập tức
+            if self.startup_counter < 30 and not self.game_over and not self.game_won:
+                moving = False
+                self.startup_counter += 1
+            else:
+                moving = True
+
+            # Cập nhật trạng thái của Ghost (chỉ di chuyển khi đã đủ startup)
+            if self.startup_counter_ghost < 60:
+                self.startup_counter_ghost += 1
+            else:
+                targets = self.get_targets()
+                for i, ghost in enumerate(self.ghosts):
+                    ghost.target = targets[i]
+                    ghost.update_state(self.powerup, self.eaten_ghost, self.ghost_speeds[i], ghost.x_pos, ghost.y_pos)
+                    
+                    # Xử lý di chuyển của ghost
+                    if ghost.in_box:
+                        ghost.dead = False
+                        ghost.x_pos, ghost.y_pos, ghost.direction = ghost.move_clyde()
+                    else:
+                        ghost.x_pos, ghost.y_pos, ghost.direction = ghost.move_blinky()
+                    
+                    ghost.center_x = ghost.x_pos + 22
+                    ghost.center_y = ghost.y_pos + 22
+                    ghost.turns, ghost.in_box = ghost.check_collisions()
+
+            # Vẽ màn hình
+            self.screen.fill("black")
+            self.draw_board()
+            self.draw_grid()
+            center_x, center_y = self.player.get_center()
+
+            # Kiểm tra thắng thua
+            self.game_won = all(1 not in row and 2 not in row for row in self.level)
+
+            pygame.draw.circle(self.screen, "black", (center_x, center_y), 20, 2)
+            self.player.draw(self.screen, self.counter)
+            self.draw_misc()
+            self.turns_allowed = self.check_position(center_x, center_y)
+
+            # Xử lý sự kiện bàn phím cho điều khiển tay
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    run = False
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_RIGHT:
+                        self.direction_command = 0
+                    if event.key == pygame.K_LEFT:
+                        self.direction_command = 1
+                    if event.key == pygame.K_UP:
+                        self.direction_command = 2
+                    if event.key == pygame.K_DOWN:
+                        self.direction_command = 3
+                    if event.key == pygame.K_SPACE and (self.game_over or self.game_won):
+                        self.reset()
+                        self.menu = True
+                        return
+
+            # Di chuyển Pac-Man dựa trên phím bấm
+            if moving and not self.game_won:
+                if self.direction_command == 0 and self.turns_allowed[0]:
+                    self.player.direction = 0
+                if self.direction_command == 1 and self.turns_allowed[1]:
+                    self.player.direction = 1
+                if self.direction_command == 2 and self.turns_allowed[2]:
+                    self.player.direction = 2
+                if self.direction_command == 3 and self.turns_allowed[3]:
+                    self.player.direction = 3
+                self.player.move(self.turns_allowed)
+
+            # Vẽ ghosts
+            for ghost in self.ghosts:
+                ghost.draw()
+            for ghost in self.ghosts:
+                ghost.target = ()
+
+            self.powerup, self.power_counter = self.check_collisions()
+            if self.check_ghost_collisions():
+                moving = False
+                self.startup_counter = 0
+            if self.player.lives <= 0:
+                self.game_over = True
+                moving = False
+                self.startup_counter = 0
+
+            self.draw_path()
+            self.draw_ghost_radii(ghost_radius=3)
+            pygame.display.flip()
     def draw_path(self):
         if self.path_to_target:
             num1 = (self.HEIGHT - 50) // 32
@@ -600,24 +626,123 @@ class Game:
             if self.logic.heuristic(current_grid_pos, ghost_grid) < threshold:
                 return True
         return False
+    def find_dot_safe(self, current_pos, ghost_pos):
+        """
+        Tìm một điểm dot an toàn cho Pac-Man khi ma ở gần.
+        Đồng thời tìm một vị trí an toàn để di chuyển khi ma quá gần.
+        
+        Args:
+            current_pos: Vị trí hiện tại của Pac-Man (tọa độ lưới)
+            ghost_pos: Danh sách vị trí của các ma (tọa độ lưới)
+            
+        Returns:
+            tuple: (safe_dot, safe_point)
+            - safe_dot: Một điểm dot mà Pac-Man có thể an toàn đến được
+            - safe_point: Một điểm cách xa ma ít nhất 5 đơn vị
+        """
+        # Tìm tất cả các điểm dot
+        dots = self.find_dots()
+        if not dots:
+            return None, None
+            
+        # Tính khoảng cách gần nhất đến ma
+        min_ghost_dist = min(self.logic.heuristic(current_pos, ghost) for ghost in ghost_pos)
+        
+        # Nếu ma ở quá gần (khoảng cách <= 4)
+        if min_ghost_dist <= 3:
+            # Tìm một điểm dot an toàn
+            safe_dot = None
+            for dot in dots:
+                # Kiểm tra xem có đường đi an toàn đến dot không
+                path = self.logic.rta_star_avoid_ghosts(current_pos, [dot], ghost_positions=ghost_pos)
+                if path:
+                    safe_dot = dot
+                    break
+                    
+            # Tìm một vị trí an toàn cách xa ma ít nhất 5 đơn vị
+            safe_point = None
+            # Duyệt qua tất cả các vị trí trong mê cung
+            for i in range(len(self.level)):
+                for j in range(len(self.level[0])):
+                    if self.level[i][j] < 3:  # Không phải tường
+                        pos = (i, j)
+                        # Kiểm tra xem vị trí này có đủ xa ma không
+                        if all(self.logic.heuristic(pos, ghost) >= 5 for ghost in ghost_pos):
+                            # Kiểm tra xem có thể đến được vị trí này không
+                            path = self.logic.rta_star_avoid_ghosts(current_pos, [pos], ghost_positions=ghost_pos)
+                            if path:
+                                safe_point = pos
+                                break
+                if safe_point:
+                    break
+                    
+            return safe_dot, safe_point
+            
+        # Nếu ma không ở gần, trả về điểm dot gần nhất
+        closest_dot = min(dots, key=lambda dot: self.logic.heuristic(current_pos, dot))
+        return closest_dot, None
+    def predict_ghost_positions(self, ghosts, steps=4):
+        """Dự đoán vị trí ghost trong vài bước tiếp theo."""
+        predicted_positions = []
+        directions = [(0, 1), (0, -1), (-1, 0), (1, 0)]  # right, left, up, down
+        
+        for ghost in ghosts:
+            current_pos = self.get_grid_pos(ghost.center_x, ghost.center_y)
+            predicted_positions.append(current_pos)
+            
+            # Lấy hướng hiện tại của ghost
+            current_direction = ghost.direction
+            
+            # Dự đoán các vị trí tiếp theo
+            for _ in range(steps):
+                # Thử các hướng có thể đi
+                possible_moves = []
+                for dx, dy in directions:
+                    new_pos = (current_pos[0] + dy, current_pos[1] + dx)  # Đảo ngược dx, dy vì grid_pos là (row, col)
+                    if (0 <= new_pos[0] < len(self.level) and 
+                        0 <= new_pos[1] < len(self.level[0]) and 
+                        self.level[new_pos[0]][new_pos[1]] < 3):  # Không phải tường
+                        possible_moves.append(new_pos)
+                
+                # Nếu có thể di chuyển
+                if possible_moves:
+                    # Ưu tiên hướng hiện tại
+                    if current_direction == 0:  # right
+                        next_pos = min(possible_moves, key=lambda pos: pos[1])
+                    elif current_direction == 1:  # left
+                        next_pos = max(possible_moves, key=lambda pos: pos[1])
+                    elif current_direction == 2:  # up
+                        next_pos = max(possible_moves, key=lambda pos: pos[0])
+                    else:  # down
+                        next_pos = min(possible_moves, key=lambda pos: pos[0])
+                    
+                    predicted_positions.append(next_pos)
+                    current_pos = next_pos
+        
+        # Loại bỏ các vị trí trùng lặp
+        return list(set(predicted_positions))
 
+    def is_path_safe(self, path, ghost_positions, danger_radius=4):
+        for pos in path:
+            for ghost_pos in ghost_positions:
+                if self.heuristic(pos, ghost_pos) <= danger_radius:
+                    return False
+        return True
     def run_A_star(self):
         run = True
-        self.game_mode = 2  # Đặt chế độ chơi là A*
-        self.start_time = pygame.time.get_ticks()  # Bắt đầu đếm thời gian
+        self.game_mode = 2
+        self.start_time = pygame.time.get_ticks()
         moving = False
 
         while run:
             self.timer.tick(self.fps)
 
-            # Cập nhật thời gian game nếu chưa thắng
             if self.start_time is None:
                 self.start_time = pygame.time.get_ticks()
             if not self.game_won and not self.game_over:
                 current_time = pygame.time.get_ticks()
-                self.game_duration = (current_time - self.start_time) / 1000.0  # Tính bằng giây
+                self.game_duration = (current_time - self.start_time) / 1000.0
 
-            # Cập nhật trạng thái nhấp nháy và powerup
             if self.counter < 19:
                 self.counter += 1
                 if self.counter > 3:
@@ -631,18 +756,15 @@ class Game:
                 self.power_counter = 0
                 self.powerup = False
 
-            # Cập nhật trạng thái khởi động
             if self.startup_counter < 30 and not self.game_over and not self.game_won:
                 moving = False
                 self.startup_counter += 1
             else:
                 moving = True
 
-            # Ghosts bắt đầu di chuyển sau một khoảng thời gian
             if self.startup_counter_ghost < 60:
                 self.startup_counter_ghost += 1
             else:
-                # Lấy danh sách các mục tiêu cho ghosts
                 targets = self.get_targets()
                 for i, ghost in enumerate(self.ghosts):
                     ghost.target = targets[i]
@@ -654,43 +776,22 @@ class Game:
                             ghost.x_pos, ghost.y_pos, ghost.direction = ghost.move_clyde()
                         else:
                             ghost.x_pos, ghost.y_pos, ghost.direction = ghost.move_blinky()
-                    elif i == 1:
-                        if ghost.in_box or ghost.dead:
-                            if ghost.in_box:
-                                ghost.dead = False
-                            ghost.x_pos, ghost.y_pos, ghost.direction = ghost.move_clyde()
-                        else:
-                            ghost.x_pos, ghost.y_pos, ghost.direction = ghost.move_pinky()
-                    elif i == 2:
-                        if ghost.in_box or ghost.dead:
-                            if ghost.in_box:
-                                ghost.dead = False
-                            ghost.x_pos, ghost.y_pos, ghost.direction = ghost.move_clyde()
-                        else:
-                            ghost.x_pos, ghost.y_pos, ghost.direction = ghost.move_inky()
-                    elif i == 3:
-                        if ghost.in_box:
-                            ghost.dead = False
-                        ghost.x_pos, ghost.y_pos, ghost.direction = ghost.move_clyde()
                     ghost.center_x = ghost.x_pos + 22
                     ghost.center_y = ghost.y_pos + 22
                     ghost.turns, ghost.in_box = ghost.check_collisions()
 
-            ghost_pos = [
-                self.get_surrounding_positions(self.ghosts[0].center_x, self.ghosts[0].center_y),
-                self.get_surrounding_positions(self.ghosts[1].center_x, self.ghosts[1].center_y),
-                self.get_surrounding_positions(self.ghosts[2].center_x, self.ghosts[2].center_y),
-                self.get_surrounding_positions(self.ghosts[3].center_x, self.ghosts[3].center_y),
-            ]
-
-            # Vẽ màn hình
+            ghost_pos = []
+            predicted_ghost_pos = self.predict_ghost_positions(self.ghosts,steps=4)
+            ghost_pos.extend(predicted_ghost_pos)
+            print(len(ghost_pos))
+    
             self.screen.fill("black")
             self.draw_board()
             self.draw_grid()
             center_x, center_y = self.player.get_center()
 
             self.game_won = all(1 not in row and 2 not in row for row in self.level)
-            if self.game_won:  # Lưu thời gian khi thắng
+            if self.game_won:
                 if self.game_duration not in self.astar_times:
                     self.astar_times.insert(0, self.game_duration)
 
@@ -699,49 +800,40 @@ class Game:
             self.draw_misc()
 
             self.turns_allowed = self.check_position(center_x, center_y)
-
-            if moving and not self.game_won:  # Nếu đang moving và game chưa thắng, thực hiện tính toán đường đi
+            # print(ghost_pos)
+            # if(self.get_grid_pos(center_x, center_y) in ghost_pos):
+            #         print(current_grid_pos)
+            if moving and not self.game_won:
                 current_grid_pos = self.get_grid_pos(center_x, center_y)
-                # Khi đường đi tính sẵn vẫn chưa hết
-                if self.path_to_target and self.current_target_index < len(self.path_to_target):  # Nếu vẫn còn đường trong self.path_to_target và current_target_index chưa vượt quá độ dài của nó
-                    next_grid_pos = self.path_to_target[self.current_target_index]  # Đặt next_grid_pos là vị trí tiếp theo trong đường đi
+                
+                # Kiểm tra đường đi hiện tại
+                if self.path_to_target and not self.is_path_safe(self.path_to_target[self.current_target_index:], ghost_pos, danger_radius=3):
+                    self.path_to_target = None
+                    self.current_target_index = 0
+                
+                # Tìm mục tiêu an toàn
+                safe_dot, safe_point = self.find_dot_safe(current_grid_pos, ghost_pos)
 
-                    if self.is_at_center(self.player.x, self.player.y, current_grid_pos):
-                        if current_grid_pos == next_grid_pos:
-                            self.current_target_index += 1
-                        else:
-                            self.player.direction = self.get_direction_from_path(current_grid_pos, next_grid_pos)
-                            if self.turns_allowed[self.player.direction]:
-                                self.player.move(self.turns_allowed)
-                    else:
-                        if self.turns_allowed[self.player.direction]:
-                            self.player.move(self.turns_allowed)
-                #     self.print_movement_debug(current_grid_pos, next_grid_pos)
-                # else:
-                #     self.print_movement_debug(current_grid_pos)
-
-                # Nếu không có đường đi hoặc đã đến đích, tìm kiếm đường đi mới
+                # Tính toán đường đi mới nếu cần
                 if self.path_to_target is None or self.current_target_index >= len(self.path_to_target) or (self.path_to_target and self.path_to_target[0] != current_grid_pos):
-                    dots = self.find_dots()
-                    if dots:
-                        if self.powerup:
-                            self.path_to_target = self.logic.a_star(current_grid_pos, dots)
-                            self.current_target_index = 0
+                    
+                        if safe_dot:
+                            candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, [safe_dot], ghost_positions=ghost_pos)
+                        elif safe_point:
+                            candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, [safe_point], ghost_positions=ghost_pos)
                         else:
-                            # self.path_to_target = self.logic.a_star_avoid_ghosts(current_grid_pos, dots, ghost_positions=ghost_pos, ghost_radius=3)
-                            # self.current_target_index = 0
-                            candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, dots, ghost_positions=ghost_pos, ghost_radius=3, depth_limit=5)
-                            if candidate:
-                                self.path_to_target = candidate
-                                self.current_target_index = 1  # candidate[0]==current_grid_pos, candidate[1] là bước đi mới
-                            else:
-                                self.path_to_target = None
-                    else:
-                        self.path_to_target = None
+                            dots = self.find_dots()
+                            candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, dots, ghost_positions=ghost_pos) if dots else None
 
+                        if candidate:
+                            self.path_to_target = candidate
+                            self.current_target_index = 1
+                        else:
+                            self.path_to_target = None
+
+                # Di chuyển theo đường đi
                 if self.path_to_target and self.current_target_index < len(self.path_to_target):
                     next_grid_pos = self.path_to_target[self.current_target_index]
-
                     if self.is_at_center(self.player.x, self.player.y, current_grid_pos):
                         if current_grid_pos == next_grid_pos:
                             self.current_target_index += 1
@@ -752,7 +844,6 @@ class Game:
                     else:
                         if self.turns_allowed[self.player.direction]:
                             self.player.move(self.turns_allowed)
-            # Vẽ ghosts
 
             for ghost in self.ghosts:
                 ghost.draw()
@@ -774,6 +865,7 @@ class Game:
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE and (self.game_over or self.game_won):
                         self.reset()
+
             self.draw_path()
             self.draw_ghost_radii(ghost_radius=3)
             pygame.display.flip()
@@ -857,9 +949,6 @@ class Game:
 
             ghost_pos = [
                 self.get_surrounding_positions(self.ghosts[0].center_x, self.ghosts[0].center_y),
-                self.get_surrounding_positions(self.ghosts[1].center_x, self.ghosts[1].center_y),
-                self.get_surrounding_positions(self.ghosts[2].center_x, self.ghosts[2].center_y),
-                self.get_surrounding_positions(self.ghosts[3].center_x, self.ghosts[3].center_y),
             ]
 
             # Vẽ màn hình
@@ -931,6 +1020,304 @@ class Game:
             pygame.display.flip()
 
         pygame.quit()
+
+
+    def run_backtracking(self):
+        run = True
+        self.game_mode = 3  # Chế độ Backtracking
+        self.start_time = pygame.time.get_ticks()
+        moving = False
+
+        # Khởi tạo đường đi ban đầu
+        self.path_to_target = None
+        self.current_target_index = 0
+
+        # Giới hạn độ sâu DFS để tránh lag/crash
+        depth_limit = 50
+
+        import random
+
+        while run:
+            self.timer.tick(self.fps)
+
+            # 1) Cập nhật thời gian chơi
+            if not self.game_won and not self.game_over:
+                now = pygame.time.get_ticks()
+                self.game_duration = (now - self.start_time) / 1000.0
+
+            # 2) Nhấp nháy & Power-up
+            self.counter = (self.counter + 1) % 20
+            self.flicker = (self.counter <= 3)
+            if self.powerup:
+                self.power_counter += 1
+                if self.power_counter >= 600:
+                    self.powerup, self.power_counter = False, 0
+
+            # 3) Delay khởi động Pac-Man
+            if self.startup_counter < 30 and not self.game_over and not self.game_won:
+                moving = False
+                self.startup_counter += 1
+            else:
+                moving = True
+
+            # 4) Cập nhật Ghost
+            if self.startup_counter_ghost < 60:
+                self.startup_counter_ghost += 1
+            else:
+                targets = self.get_targets()
+                for i, ghost in enumerate(self.ghosts):
+                    ghost.target = targets[i]
+                    ghost.update_state(self.powerup, self.eaten_ghost,
+                                    self.ghost_speeds[i], ghost.x_pos, ghost.y_pos)
+                    if ghost.in_box or ghost.dead:
+                        if ghost.in_box: ghost.dead = False
+                        move_fn = ghost.move_clyde
+                    else:
+                        move_fn = [ghost.move_blinky, ghost.move_pinky,
+                                ghost.move_inky, ghost.move_clyde][i]
+                    ghost.x_pos, ghost.y_pos, ghost.direction = move_fn()
+                    ghost.center_x = ghost.x_pos + 22
+                    ghost.center_y = ghost.y_pos + 22
+                    ghost.turns, ghost.in_box = ghost.check_collisions()
+
+            # 5) Tính vùng né ghost
+            ghost_pos = [self.get_surrounding_positions(g.center_x, g.center_y)
+                        for g in self.ghosts]
+
+            # 6) Vẽ board & Pac-Man
+            self.screen.fill("black")
+            self.draw_board()
+            self.draw_grid()
+            cx, cy = self.player.get_center()
+
+            # 7) Kiểm win/lose
+            self.game_won = all(1 not in row and 2 not in row for row in self.level)
+            if self.game_won and self.game_duration not in self.backtracking_times:
+                self.backtracking_times.insert(0, self.game_duration)
+
+            self.player.draw(self.screen, self.counter)
+            self.draw_misc()
+            self.turns_allowed = self.check_position(cx, cy)
+
+            # 8) Logic di chuyển Pac-Man theo Backtracking
+            if moving and not self.game_won and not self.game_over:
+                grid = self.get_grid_pos(cx, cy)
+
+                # A) Tiếp bước cũ nếu còn
+                if self.path_to_target and self.current_target_index < len(self.path_to_target):
+                    nxt = self.path_to_target[self.current_target_index]
+                    if self.is_at_center(self.player.x, self.player.y, grid):
+                        if grid == nxt:
+                            self.current_target_index += 1
+                        else:
+                            d = self.get_direction_from_path(grid, nxt)
+                            if self.turns_allowed[d]:
+                                self.player.direction = d
+                                self.player.move(self.turns_allowed)
+                            else:
+                                self.path_to_target = None
+                    else:
+                        if self.turns_allowed[self.player.direction]:
+                            self.player.move(self.turns_allowed)
+
+                # B) Tính path mới nếu cần
+                needs_new = (
+                    not self.path_to_target or
+                    self.current_target_index >= len(self.path_to_target) or
+                    (self.path_to_target and self.path_to_target[0] != grid)
+                )
+                if needs_new:
+                    dots = self.find_dots()
+                    if dots:
+                        # 1) Thử né ghost
+                        try:
+                            path = self.logic.backtracking(
+                                grid, dots,
+                                ghost_positions=ghost_pos,
+                                depth_limit=depth_limit
+                            )
+                        except RecursionError:
+                            path = None
+
+                        # 2) Nếu không tìm thấy, thử không né ghost
+                        if not path:
+                            try:
+                                path = self.logic.backtracking(
+                                    grid, dots,
+                                    ghost_positions=None,
+                                    depth_limit=depth_limit
+                                )
+                            except RecursionError:
+                                path = None
+
+                        # 3) Gán path và index
+                        if path and len(path) > 1:
+                            self.path_to_target = path
+                            self.current_target_index = 1
+                        else:
+                            self.path_to_target = None
+                            self.current_target_index = 0
+
+                    else:
+                        self.path_to_target = None
+                        self.current_target_index = 0
+
+                # C) Nếu vẫn không có path, đi ngẫu nhiên
+                if not self.path_to_target:
+                    # Lấy các hướng được phép
+                    dirs = [i for i, ok in enumerate(self.turns_allowed) if ok]
+                    if dirs:
+                        d = random.choice(dirs)
+                        self.player.direction = d
+                        self.player.move(self.turns_allowed)
+
+            # 9) Vẽ Ghost & kiểm va chạm
+            for ghost in self.ghosts:
+                ghost.draw()
+            self.powerup, self.power_counter = self.check_collisions()
+            if self.check_ghost_collisions():
+                moving = False
+                self.startup_counter = 0
+
+            # 10) Xử lý sự kiện
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    run = False
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE \
+                    and (self.game_over or self.game_won):
+                    self.reset()
+                    run = False
+
+            # 11) Vẽ path & khu vực ghost
+            self.draw_path()
+            self.draw_ghost_radii(ghost_radius=3)
+
+            pygame.display.flip()
+
+        # Khi kết thúc, vòng lặp ngoài self.run() sẽ quản lý menu hoặc thoát
+
+
+    # Khi kết thúc, vòng lặp ngoài self.run() sẽ hiển thị menu hoặc thoát
+    def run_genetic(self):
+        run = True
+        self.game_mode = 4  # Chế độ Genetic
+        self.start_time = pygame.time.get_ticks()
+        moving = False
+
+        self.path_to_target = None
+        self.current_target_index = 0
+
+        while run:
+            self.timer.tick(self.fps)
+
+            if not self.game_won and not self.game_over:
+                now = pygame.time.get_ticks()
+                self.game_duration = (now - self.start_time) / 1000.0
+
+            self.counter = (self.counter + 1) % 20
+            self.flicker = (self.counter <= 3)
+            if self.powerup:
+                self.power_counter += 1
+                if self.power_counter >= 600:
+                    self.powerup, self.power_counter = False, 0
+
+            if self.startup_counter < 30 and not self.game_over and not self.game_won:
+                moving = False
+                self.startup_counter += 1
+            else:
+                moving = True
+
+            if self.startup_counter_ghost < 60:
+                self.startup_counter_ghost += 1
+            else:
+                targets = self.get_targets()
+                for i, ghost in enumerate(self.ghosts):
+                    ghost.target = targets[i]
+                    ghost.update_state(self.powerup, self.eaten_ghost, self.ghost_speeds[i], ghost.x_pos, ghost.y_pos)
+
+                    move_fn = ghost.move_clyde if ghost.in_box or ghost.dead else [
+                        ghost.move_blinky, ghost.move_pinky,
+                        ghost.move_inky, ghost.move_clyde][i]
+
+                    if ghost.in_box:
+                        ghost.dead = False
+
+                    ghost.x_pos, ghost.y_pos, ghost.direction = move_fn()
+                    ghost.center_x = ghost.x_pos + 22
+                    ghost.center_y = ghost.y_pos + 22
+                    ghost.turns, ghost.in_box = ghost.check_collisions()
+
+            ghost_pos = [self.get_surrounding_positions(g.center_x, g.center_y) for g in self.ghosts]
+
+            self.screen.fill("black")
+            self.draw_board()
+            self.draw_grid()
+            cx, cy = self.player.get_center()
+
+            self.game_won = all(1 not in row and 2 not in row for row in self.level)
+            if self.game_won and self.game_duration not in self.genetic_times:
+                self.genetic_times.insert(0, self.game_duration)
+
+            self.player.draw(self.screen, self.counter)
+            self.draw_misc()
+            self.turns_allowed = self.check_position(cx, cy)
+
+            if moving and not self.game_won and not self.game_over:
+                grid = self.get_grid_pos(cx, cy)
+
+                if self.path_to_target and self.current_target_index < len(self.path_to_target):
+                    nxt = self.path_to_target[self.current_target_index]
+                    if self.is_at_center(self.player.x, self.player.y, grid):
+                        if grid == nxt:
+                            self.current_target_index += 1
+                        else:
+                            d = self.get_direction_from_path(grid, nxt)
+                            if self.turns_allowed[d]:
+                                self.player.direction = d
+                                self.player.move(self.turns_allowed)
+                            else:
+                                self.path_to_target = None
+                    else:
+                        if self.turns_allowed[self.player.direction]:
+                            self.player.move(self.turns_allowed)
+
+                if not self.path_to_target or self.current_target_index >= len(self.path_to_target):
+                    dots = self.find_dots()
+                    if dots:
+                        path = self.logic.genetic(
+                            start=grid,
+                            goals=dots,
+                            ghost_positions=ghost_pos,
+                            max_generations=100,
+                            population_size=30
+                        )
+                        if path and len(path) > 1:
+                            self.path_to_target = path
+                            self.current_target_index = 1
+                        else:
+                            self.path_to_target = None
+                            self.current_target_index = 0
+
+            for ghost in self.ghosts:
+                ghost.draw()
+
+            self.powerup, self.power_counter = self.check_collisions()
+            if self.check_ghost_collisions():
+                moving = False
+                self.startup_counter = 0
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    run = False
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE \
+                        and (self.game_over or self.game_won):
+                    self.reset()
+                    run = False
+
+            self.draw_path()
+            self.draw_ghost_radii(ghost_radius=3)
+            pygame.display.flip()
+
 
 
 if __name__ == "__main__":

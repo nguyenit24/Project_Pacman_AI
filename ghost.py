@@ -24,7 +24,26 @@ class Ghost:
         self.turns, self.in_box = self.check_collisions()
         self.rect = None  # Sẽ được cập nhật khi vẽ
         
-
+    def get_grid_pos(self):
+        """
+        Lấy vị trí của ghost trong lưới.
+        
+        Returns:
+            tuple: (row, col) - vị trí của ghost trong lưới
+        """
+        # Tính kích thước của một ô lưới
+        cell_height = (self.height - 50) // 32  # Chiều cao của một ô lưới
+        cell_width = self.width // 30  # Chiều rộng của một ô lưới
+        
+        # Tính vị trí trong lưới
+        row = self.center_y // cell_height
+        col = self.center_x // cell_width
+        
+        # Đảm bảo vị trí nằm trong giới hạn của lưới
+        row = max(0, min(row, 31))  # Giới hạn từ 0 đến 31
+        col = max(0, min(col, 29))  # Giới hạn từ 0 đến 29
+        
+        return (row, col)
     def draw(self):
         screen = pygame.display.get_surface()
         if (not self.powerup and not self.dead) or (self.eaten_ghost[self.id] and self.powerup and not self.dead):
