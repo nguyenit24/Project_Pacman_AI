@@ -49,7 +49,7 @@ class Game:
         self.menu = False
         self.paused = False  # Thêm trạng thái tạm dừng
         self.game_level = 1
-        
+
         self.eaten_ghost = []
         self.ghost_speeds = []
         self.ghosts = []
@@ -320,10 +320,10 @@ class Game:
                     target = (player_x, player_y)
                 else:
                     target = return_target
-            if(ghost.in_box):
-                target = (ghost.x_pos, ghost.y_pos - 100) 
+            if ghost.in_box:
+                target = (ghost.x_pos, ghost.y_pos - 100)
             targets.append(target)
-            
+
         return targets
 
     def reset(self):
@@ -408,6 +408,11 @@ class Game:
                             self.start_time = pygame.time.get_ticks()
                         elif event.key == pygame.K_5:
                             selected_mode = self.run_genetic
+                            self.menu = False
+                            self.paused = False
+                            self.start_time = pygame.time.get_ticks()
+                        elif event.key == pygame.K_6:
+                            selected_mode = self.run_RTA_star
                             self.menu = False
                             self.paused = False
                             self.start_time = pygame.time.get_ticks()
@@ -625,7 +630,7 @@ class Game:
         dots = self.find_dots()
         if not dots:
             return None, None
-        min_ghost_dist = float('inf') if not ghost_pos else min(self.logic.heuristic(current_pos, ghost) for ghost in ghost_pos)
+        min_ghost_dist = float("inf") if not ghost_pos else min(self.logic.heuristic(current_pos, ghost) for ghost in ghost_pos)
         if min_ghost_dist <= 3:
             safe_dot = None
             for dot in dots:
@@ -662,9 +667,7 @@ class Game:
                 possible_moves = []
                 for dx, dy in directions:
                     new_pos = (current_pos[0] + dy, current_pos[1] + dx)
-                    if (0 <= new_pos[0] < len(self.level) and 
-                        0 <= new_pos[1] < len(self.level[0]) and 
-                        self.level[new_pos[0]][new_pos[1]] < 3):
+                    if 0 <= new_pos[0] < len(self.level) and 0 <= new_pos[1] < len(self.level[0]) and self.level[new_pos[0]][new_pos[1]] < 3:
                         possible_moves.append(new_pos)
                 if possible_moves:
                     if current_direction == 0:
@@ -690,6 +693,7 @@ class Game:
         run = True
         self.game_mode = 2
         moving = False
+        self.start_time = pygame.time.get_ticks()
 
         while run:
             self.timer.tick(self.fps)
@@ -734,9 +738,11 @@ class Game:
                 self.power_counter = 0
                 self.powerup = False
 
-            if self.startup_counter < 30 and not self.game_over and not self.game_won:
+            if self.startup_counter < 30 and not self.game_won:
                 moving = False
                 self.startup_counter += 1
+            elif self.game_over:
+                moving = False
             else:
                 moving = True
 
@@ -775,7 +781,7 @@ class Game:
 
             if moving and not self.game_won:
                 current_grid_pos = self.get_grid_pos(center_x, center_y)
-                if self.path_to_target and not self.is_path_safe(self.path_to_target[self.current_target_index:], ghost_pos, danger_radius=3):
+                if self.path_to_target and not self.is_path_safe(self.path_to_target[self.current_target_index :], ghost_pos, danger_radius=3):
                     self.path_to_target = None
                     self.current_target_index = 0
                 safe_dot, safe_point = self.find_dot_safe(current_grid_pos, ghost_pos)
@@ -887,9 +893,11 @@ class Game:
                 self.power_counter = 0
                 self.powerup = False
 
-            if self.startup_counter < 30 and not self.game_over and not self.game_won:
+            if self.startup_counter < 30 and not self.game_won:
                 moving = False
                 self.startup_counter += 1
+            elif self.game_over:
+                moving = False
             else:
                 moving = True
 
@@ -1017,7 +1025,7 @@ class Game:
                 self.game_duration = (current_time - self.start_time) / 1000.0
 
             self.counter = (self.counter + 1) % 20
-            self.flicker = (self.counter <= 3)
+            self.flicker = self.counter <= 3
             if self.powerup:
                 self.power_counter += 1
                 if self.power_counter >= 600:
@@ -1077,11 +1085,7 @@ class Game:
                     else:
                         if self.turns_allowed[self.player.direction]:
                             self.player.move(self.turns_allowed)
-                needs_new = (
-                    not self.path_to_target or
-                    self.current_target_index >= len(self.path_to_target) or
-                    (self.path_to_target and self.path_to_target[0] != grid)
-                )
+                needs_new = not self.path_to_target or self.current_target_index >= len(self.path_to_target) or (self.path_to_target and self.path_to_target[0] != grid)
                 if needs_new:
                     dots = self.find_dots()
                     if dots:
@@ -1172,15 +1176,17 @@ class Game:
                 self.game_duration = (current_time - self.start_time) / 1000.0
 
             self.counter = (self.counter + 1) % 20
-            self.flicker = (self.counter <= 3)
+            self.flicker = self.counter <= 3
             if self.powerup:
                 self.power_counter += 1
                 if self.power_counter >= 600:
                     self.powerup, self.power_counter = False, 0
 
-            if self.startup_counter < 30 and not self.game_over and not self.game_won:
+            if self.startup_counter < 30 and not self.game_won:
                 moving = False
                 self.startup_counter += 1
+            elif self.game_over:
+                moving = False
             else:
                 moving = True
 
@@ -1191,9 +1197,7 @@ class Game:
                 for i, ghost in enumerate(self.ghosts):
                     ghost.target = targets[i] if i < len(targets) else ""
                     ghost.update_state(self.powerup, self.eaten_ghost, self.ghost_speeds[i], ghost.x_pos, ghost.y_pos)
-                    move_fn = ghost.move_clyde if ghost.in_box or ghost.dead else (
-                        ghost.move_blinky if i == 0 else ghost.move_pinky
-                    )
+                    move_fn = ghost.move_clyde if ghost.in_box or ghost.dead else (ghost.move_blinky if i == 0 else ghost.move_pinky)
                     if ghost.in_box:
                         ghost.dead = False
                     ghost.x_pos, ghost.y_pos, ghost.direction = move_fn()
@@ -1236,13 +1240,7 @@ class Game:
                 if not self.path_to_target or self.current_target_index >= len(self.path_to_target):
                     dots = self.find_dots()
                     if dots:
-                        path = self.logic.genetic(
-                            start=grid,
-                            goals=dots,
-                            ghost_positions=ghost_pos,
-                            max_generations=100,
-                            population_size=30
-                        )
+                        path = self.logic.genetic(start=grid, goals=dots, ghost_positions=ghost_pos, max_generations=100, population_size=30)
                         if path and len(path) > 1:
                             self.path_to_target = path
                             self.current_target_index = 1
@@ -1254,6 +1252,159 @@ class Game:
                 ghost.draw()
             self.powerup, self.power_counter = self.check_collisions()
             if self.check_ghost_collisions():
+                moving = False
+                self.startup_counter = 0
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    run = False
+                    self.menu = True
+                    return
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_p:
+                        self.paused = True
+                    if event.key == pygame.K_SPACE and (self.game_over or self.game_won):
+                        self.reset()
+                        self.menu = True
+                        self.level_menu = True
+                        run = False
+                        return
+
+            self.draw_path()
+            self.draw_ghost_radii(ghost_radius=3)
+            pygame.display.flip()
+
+    def run_RTA_star(self):
+        run = True
+        self.game_mode = 0
+        moving = False
+        self.start_time = pygame.time.get_ticks()
+
+        while run:
+            self.timer.tick(self.fps)
+            if self.paused:
+                self.draw_pause_menu()
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        run = False
+                        return
+                    elif event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_p:
+                            self.paused = False
+                        elif event.key == pygame.K_1:
+                            self.paused = False
+                        elif event.key == pygame.K_2:
+                            self.reset()
+                            self.menu = True
+                            self.level_menu = True
+                            self.paused = False
+                            run = False
+                            return
+                        elif event.key == pygame.K_3:
+                            pygame.quit()
+                            return
+                pygame.display.flip()
+                continue
+
+            if not self.game_won and not self.game_over:
+                current_time = pygame.time.get_ticks()
+                self.game_duration = (current_time - self.start_time) / 1000.0
+
+            if self.counter < 19:
+                self.counter += 1
+                if self.counter > 3:
+                    self.flicker = False
+            else:
+                self.counter = 0
+                self.flicker = True
+
+            if self.powerup and self.power_counter < 600:
+                self.power_counter += 1
+            elif self.powerup and self.power_counter >= 600:
+                self.power_counter = 0
+                self.powerup = False
+
+            if self.startup_counter < 30 and not self.game_over and not self.game_won:
+                moving = False
+                self.startup_counter += 1
+            else:
+                moving = True
+
+            if self.startup_counter_ghost < 60:
+                self.startup_counter_ghost += 1
+            else:
+                targets = self.get_targets()
+                for i, ghost in enumerate(self.ghosts):
+                    ghost.target = targets[i] if i < len(targets) else ""
+                    ghost.update_state(self.powerup, self.eaten_ghost, self.ghost_speeds[i], ghost.x_pos, ghost.y_pos)
+                    if ghost.in_box:
+                        ghost.dead = False
+                        ghost.x_pos, ghost.y_pos, ghost.direction = ghost.move_clyde()
+                    else:
+                        ghost.x_pos, ghost.y_pos, ghost.direction = ghost.move_blinky() if i == 0 else ghost.move_pinky()
+                    ghost.center_x = ghost.x_pos + 22
+                    ghost.center_y = ghost.y_pos + 22
+                    ghost.turns, ghost.in_box = ghost.check_collisions()
+            ghost_pos = self.predict_ghost_positions(self.ghosts, steps=4)
+            self.screen.fill("black")
+            self.draw_board()
+            self.draw_grid()
+            center_x, center_y = self.player.get_center()
+            self.turns_allowed = self.check_position(center_x, center_y)
+            current_grid_pos = self.get_grid_pos(center_x, center_y)
+
+            # Kiểm tra điều kiện thắng
+            self.game_won = all(1 not in row and 2 not in row for row in self.level)
+            if self.game_won and self.game_duration not in self.astar_times:
+                self.astar_times.insert(0, self.game_duration)
+
+            # Vẽ marker (tùy chọn)
+            pygame.draw.circle(self.screen, "black", (center_x, center_y), 20, 2)
+            self.player.draw(self.screen, self.counter)
+            self.draw_misc()
+
+            # Xác định mục tiêu dựa trên vị trí các dot an toàn (nếu có)
+            safe_dot, safe_point = self.find_dot_safe(current_grid_pos, ghost_pos)
+            if safe_dot:
+                goal = safe_dot
+            elif safe_point:
+                goal = safe_point
+            else:
+                dots = self.find_dots()
+                goal = dots[0] if dots else current_grid_pos
+
+            # Tính bước đi tiếp theo sử dụng RTA*: chỉ tính toán các trạng thái lân cận
+            next_grid_pos = self.logic.rta_star_realtime(current_grid_pos, goal, ghost_positions=ghost_pos)
+
+            # Vì RTA* tính 1 bước tại thời điểm hiện tại, chúng ta tạo "path" với current và next
+            if not self.path_to_target or self.path_to_target[0] != current_grid_pos:
+                self.path_to_target = [current_grid_pos, next_grid_pos]
+                self.current_target_index = 1
+
+            # Nếu ở giữa ô, cập nhật hướng dựa trên next_grid_pos
+            if moving and not self.game_won:
+                if self.is_at_center(self.player.x, self.player.y, current_grid_pos):
+                    if current_grid_pos == next_grid_pos:
+                        self.current_target_index += 1
+                    else:
+                        self.player.direction = self.get_direction_from_path(current_grid_pos, next_grid_pos)
+                        if self.turns_allowed[self.player.direction]:
+                            self.player.move(self.turns_allowed)
+                else:
+                    if self.turns_allowed[self.player.direction]:
+                        self.player.move(self.turns_allowed)
+
+            for ghost in self.ghosts:
+                ghost.draw()
+            for ghost in self.ghosts:
+                ghost.target = ()
+
+            self.powerup, self.power_counter = self.check_collisions()
+            if self.check_ghost_collisions():
+                moving = False
+                self.startup_counter = 0
+            if self.player.lives <= 0:
+                self.game_over = True
                 moving = False
                 self.startup_counter = 0
 
@@ -1288,11 +1439,7 @@ class Game:
         title_rect = title_text.get_rect(center=(self.WIDTH_SCREEN // 2, self.HEIGHT * 0.3))
         self.screen.blit(title_text, title_rect)
 
-        levels = [
-            {"text": "1. Level 1: No Ghosts", "key": pygame.K_1},
-            {"text": "2. Level 2: 1 Ghost", "key": pygame.K_2},
-            {"text": "3. Level 3: 2 Ghosts", "key": pygame.K_3}
-        ]
+        levels = [{"text": "1. Level 1: No Ghosts", "key": pygame.K_1}, {"text": "2. Level 2: 1 Ghost", "key": pygame.K_2}, {"text": "3. Level 3: 2 Ghosts", "key": pygame.K_3}]
 
         start_y = self.HEIGHT * 0.35
         spacing = self.HEIGHT * 0.1
@@ -1321,7 +1468,8 @@ class Game:
             {"text": "2. BFS Algorithm", "key": pygame.K_2, "desc": "AI with Breadth-First Search"},
             {"text": "3. A* Algorithm", "key": pygame.K_3, "desc": "AI with A* Search"},
             {"text": "4. Backtracking", "key": pygame.K_4, "desc": "AI with Backtracking"},
-            {"text": "5. Genetic Algorithm", "key": pygame.K_5, "desc": "AI with Genetic Algorithm"}
+            {"text": "5. Genetic Algorithm", "key": pygame.K_5, "desc": "AI with Genetic Algorithm"},
+            {"text": "6. RTA* Algorithm", "key": pygame.K_6, "desc": "Real-Time A* Search"},
         ]
 
         start_y = self.HEIGHT * 0.35
@@ -1351,11 +1499,7 @@ class Game:
         title_rect = title_text.get_rect(center=(self.WIDTH_SCREEN // 2, self.HEIGHT * 0.2))
         self.screen.blit(title_text, title_rect)
 
-        options = [
-            {"text": "1. Continue (P)", "key": pygame.K_1},
-            {"text": "2. Back to Mode Menu", "key": pygame.K_2},
-            {"text": "3. Exit Game", "key": pygame.K_3}
-        ]
+        options = [{"text": "1. Continue (P)", "key": pygame.K_1}, {"text": "2. Back to Mode Menu", "key": pygame.K_2}, {"text": "3. Exit Game", "key": pygame.K_3}]
 
         start_y = self.HEIGHT * 0.35
         spacing = self.HEIGHT * 0.1

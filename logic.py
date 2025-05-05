@@ -38,11 +38,7 @@ class Pathfinder:
     def is_valid_position(self, pos):
         """Kiểm tra trong biên, không phải tường (level < 3)."""
         row, col = pos
-        return (
-            0 <= row < len(self.level) and
-            0 <= col < len(self.level[0]) and
-            self.level[row][col] < 3
-        )
+        return 0 <= row < len(self.level) and 0 <= col < len(self.level[0]) and self.level[row][col] < 3
 
     def heuristic(self, pos1, pos2):
         return abs(pos1[0] - pos2[0]) + abs(pos1[1] - pos2[1])
@@ -82,11 +78,7 @@ class Pathfinder:
                         heapq.heappush(open_set, (f_score_new, new_pos, path + [current]))
         return None
 
-   
-
-        
-
-    def rta_star_avoid_ghosts(self, start, target_list, ghost_positions=None, ghost_radius = 4):
+    def rta_star_avoid_ghosts(self, start, target_list, ghost_positions=None, ghost_radius=4):
         """Real-Time A* với tránh ghost."""
         if not target_list:
             return None
@@ -132,10 +124,7 @@ class Pathfinder:
                 new_row, new_col = current[0] + dx, current[1] + dy
                 new_pos = (new_row, new_col)
 
-                if (0 <= new_row < len(self.level) and 
-                    0 <= new_col < len(self.level[0]) and 
-                    self.level[new_row][new_col] < 3 and 
-                    new_pos not in visited):
+                if 0 <= new_row < len(self.level) and 0 <= new_col < len(self.level[0]) and self.level[new_row][new_col] < 3 and new_pos not in visited:
                     penalty = compute_penalty(new_pos, flat_ghosts, ghost_radius) if flat_ghosts else 0
                     tentative_g_score = g_scores[current] + 1 + penalty
                     if new_pos not in g_scores or tentative_g_score < g_scores[new_pos]:
@@ -145,7 +134,50 @@ class Pathfinder:
                         heapq.heappush(open_set, (f_score_new, new_pos, path + [current]))
         return None
 
-    def find_dot_safe(self, current_pos, ghost_pos, ghost_radius = 4):
+    def rta_star_realtime(self, current, goal, ghost_positions=None, ghost_radius=4):
+        if not hasattr(self, "rta_heuristic"):
+            self.rta_heuristic = {}
+
+        def h(s):
+            return self.rta_heuristic.get(s, self.heuristic(s, goal))
+
+        flat_ghosts = []
+        if ghost_positions:
+            for group in ghost_positions:
+                if isinstance(group, list):
+                    flat_ghosts.extend(group)
+                else:
+                    flat_ghosts.append(group)
+        very_close_threshold = ghost_radius * 0.7
+
+        def compute_penalty(pos):
+            penalty = 0
+            for ghost in flat_ghosts:
+                d = self.heuristic(pos, ghost)
+                if d < very_close_threshold:
+                    penalty += 10000
+                elif d < ghost_radius:
+                    penalty += (ghost_radius - d) * 50
+            return penalty
+
+        directions = [(0, 1), (0, -1), (-1, 0), (1, 0)]
+        neighborhood = []
+        for dx, dy in directions:
+            new_pos = (current[0] + dx, current[1] + dy)
+            if self.is_valid_position(new_pos):
+                neighborhood.append(new_pos)
+        if not neighborhood:
+            return current
+        cost_dict = {}
+        for pos in neighborhood:
+            penalty = compute_penalty(pos) if flat_ghosts else 0
+            cost_dict[pos] = 1 + penalty + h(pos)
+        best_neighbor = min(cost_dict, key=cost_dict.get)
+        best_cost = cost_dict[best_neighbor]
+        self.rta_heuristic[current] = best_cost
+        return best_neighbor
+
+    def find_dot_safe(self, current_pos, ghost_pos, ghost_radius=4):
         """Tìm dot an toàn và điểm an toàn nếu cần."""
         dots = []
         for i in range(len(self.level)):
@@ -157,7 +189,7 @@ class Pathfinder:
 
         # Sắp xếp dots theo khoảng cách đến ghost gần nhất (ưu tiên dot xa ghost)
         dots_sorted = sorted(dots, key=lambda dot: min(self.heuristic(dot, ghost) for ghost in ghost_pos), reverse=True)
-        
+
         safe_dot = None
         safe_point = None
         for dot in dots_sorted:
@@ -184,13 +216,13 @@ class Pathfinder:
 
     def backtracking(self, start, dots, ghost_positions=None, depth_limit=50):
         """
-        Thuật toán Backtracking để tìm đường từ 'start' đến một trong các 'dots'.
-        Né tránh các vị trí trong 'ghost_positions'.
+        Backtracking with Least Constraints (LC) sử dụng MRV để ưu tiên các ô
+        có ít lựa chọn hợp lệ.
         """
         if start in dots:
             return [start]
 
-        # Vị trí ghost cần tránh
+        # Thiết lập các vị trí cần tránh từ ghost_positions
         avoid = set()
         if ghost_positions:
             for area in ghost_positions:
@@ -201,6 +233,15 @@ class Pathfinder:
 
         def is_safe(pos):
             return pos not in avoid and self.is_valid_position(pos)
+
+        def count_valid_moves(pos, visited):
+            """Đếm số bước đi hợp lệ từ vị trí pos dựa trên ràng buộc."""
+            moves = 0
+            for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                next_pos = (pos[0] + dx, pos[1] + dy)
+                if is_safe(next_pos) and next_pos not in visited:
+                    moves += 1
+            return moves
 
         def dfs(current, path, depth):
             nonlocal best_path
@@ -222,18 +263,21 @@ class Pathfinder:
                 path.pop()
                 return
 
-            # Chọn hướng theo heuristic
+            # Xác định các vị trí kề, tính số lựa chọn (MRV) và heuristic
             neighbors = []
             for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                nx, ny = current[0] + dx, current[1] + dy
-                next_pos = (nx, ny)
-                if is_safe(next_pos):
+                next_pos = (current[0] + dx, current[1] + dy)
+                if is_safe(next_pos) and next_pos not in visited:
+                    # MRV: số bước đi hợp lệ tại next_pos
+                    mrv = count_valid_moves(next_pos, visited)
+                    # Heuristic: khoảng cách tới điểm mục tiêu gần nhất
                     h = min(self.heuristic(next_pos, dot) for dot in dots)
-                    neighbors.append((h, next_pos))
+                    neighbors.append((mrv, h, next_pos))
 
-            neighbors.sort()  # Ưu tiên heuristic nhỏ hơn
+            # Ưu tiên chọn ô có mrv nhỏ nhất (ít lựa chọn hơn), sau đó là giá trị heuristic thấp
+            neighbors.sort(key=lambda x: (x[0], x[1]))
 
-            for _, next_pos in neighbors:
+            for _, _, next_pos in neighbors:
                 dfs(next_pos, path, depth + 1)
 
             visited.remove(current)
@@ -323,7 +367,7 @@ class Pathfinder:
             if path:
                 best_path = path
 
-            population = population[:population_size // 2]
+            population = population[: population_size // 2]
             new_population = []
             while len(new_population) < population_size:
                 parent1, parent2 = random.sample(population, 2)
@@ -334,4 +378,3 @@ class Pathfinder:
             population = new_population
 
         return best_path if best_path else None
-
