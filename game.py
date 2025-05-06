@@ -1201,7 +1201,7 @@ class Game:
                     ghost.center_y = ghost.y_pos + 22
                     ghost.turns, ghost.in_box = ghost.check_collisions()
 
-            ghost_pos = [self.get_surrounding_positions(ghost.center_x, ghost.center_y) for ghost in self.ghosts]
+            ghost_pos = self.predict_ghost_positions(self.ghosts, steps=4)
 
             self.screen.fill("black")
             self.draw_board()
@@ -1218,6 +1218,9 @@ class Game:
 
             if moving and not self.game_won and not self.game_over:
                 grid = self.get_grid_pos(cx, cy)
+                if self.path_to_target and not self.is_path_safe(self.path_to_target[self.current_target_index:], ghost_pos, danger_radius=4):
+                    self.path_to_target = None
+                    self.current_target_index = 0
                 if self.path_to_target and self.current_target_index < len(self.path_to_target):
                     nxt = self.path_to_target[self.current_target_index]
                     if self.is_at_center(self.player.x, self.player.y, grid):
@@ -1230,25 +1233,30 @@ class Game:
                                 self.player.move(self.turns_allowed)
                             else:
                                 self.path_to_target = None
+                                self.current_target_index = 0
                     else:
                         if self.turns_allowed[self.player.direction]:
                             self.player.move(self.turns_allowed)
-                if not self.path_to_target or self.current_target_index >= len(self.path_to_target):
-                    dots = self.find_dots()
-                    if dots:
+                if not self.path_to_target or self.current_target_index >= len(self.path_to_target) or (self.path_to_target and self.path_to_target[0] != grid):
+                    safe_dot, safe_point = self.find_dot_safe(grid, ghost_pos)
+                    target = safe_dot if safe_dot else safe_point
+                    if target:
                         path = self.logic.genetic(
                             start=grid,
-                            goals=dots,
+                            goals=[target],
                             ghost_positions=ghost_pos,
-                            max_generations=100,
-                            population_size=30
+                            max_generations=150,
+                            population_size=50
                         )
-                        if path and len(path) > 1:
+                        if path and len(path) > 1 and self.is_path_safe(path, ghost_pos, danger_radius=3):
                             self.path_to_target = path
                             self.current_target_index = 1
                         else:
                             self.path_to_target = None
                             self.current_target_index = 0
+                    else:
+                        self.path_to_target = None
+                        self.current_target_index = 0
 
             for ghost in self.ghosts:
                 ghost.draw()

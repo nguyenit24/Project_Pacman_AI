@@ -242,61 +242,80 @@ class Pathfinder:
         dfs(start, [], 0)
         return best_path
 
-    def genetic(self, start, goals, ghost_positions=None, max_generations=100, population_size=30):
+    def genetic(self, start, goals, ghost_positions=None, max_generations=200, population_size=60):
         if not goals:
             return None
 
-        avoid = set()
-        if ghost_positions:
-            for area in ghost_positions:
-                avoid.update(area)
+        avoid = set(ghost_positions) if ghost_positions else set()
 
         def is_safe(pos):
             return pos not in avoid and self.is_valid_position(pos)
 
         def generate_individual():
-            max_length = len(self.level) + len(self.level[0])
+            max_length = 20  # Giảm số bước tối đa để tăng tốc
             return [random.choice([(0, 1), (0, -1), (-1, 0), (1, 0)]) for _ in range(max_length)]
+
+        def is_opposite_move(prev_move, curr_move):
+            return (prev_move[0] + curr_move[0] == 0 and prev_move[1] + curr_move[1] == 0)
 
         def fitness(individual):
             pos = start
             score = 0
-            visited = set()
+            visited = set([pos])
+            very_close_threshold = 2.8
+            ghost_radius = 4
+            prev_move = None
+            max_steps = 15  # Giới hạn số bước kiểm tra để tăng tốc
 
-            for move in individual:
+            for i, move in enumerate(individual[:max_steps]):
+                if prev_move and is_opposite_move(prev_move, move):
+                    score -= 2000  # Phạt nếu quay đầu
+                    break
                 next_pos = (pos[0] + move[0], pos[1] + move[1])
                 if not is_safe(next_pos) or next_pos in visited:
+                    score -= 2000  # Phạt nếu vị trí không hợp lệ hoặc lặp
                     break
                 visited.add(next_pos)
                 pos = next_pos
-                score += 1
-                if pos in goals:
-                    score += 1000
-                    break
+                score += 30  # Thưởng cho mỗi bước hợp lệ
+                prev_move = move
+                # Phạt nếu gần ghost
+                if avoid:
+                    min_ghost_dist = min(self.heuristic(pos, ghost) for ghost in avoid)
+                    if min_ghost_dist < very_close_threshold:
+                        score -= 20000  # Phạt nặng nếu quá gần
+                        break
+                    elif min_ghost_dist < ghost_radius:
+                        score -= (ghost_radius - min_ghost_dist) * 1000  # Phạt nếu gần
 
-            if goals:
+            # Thưởng lớn nếu đến mục tiêu, phạt nhẹ nếu không đến
+            if pos in goals:
+                score += 30000  # Thưởng lớn nếu đến dot
+            else:
+                score -= 3000  # Phạt nhẹ nếu không đến dot
                 min_dist = min(self.heuristic(pos, goal) for goal in goals)
-                score += max(0, 100 - min_dist * 10)
+                score += max(0, 150 - min_dist * 15)  # Thưởng dựa trên khoảng cách
 
-            return score
+            return score if score > -10000 else -10000  # Điểm tối thiểu cho cá thể không khả thi
 
         def mutate(individual):
-            mutation_rate = 0.1
+            mutation_rate = 0.2
             for i in range(len(individual)):
                 if random.random() < mutation_rate:
                     individual[i] = random.choice([(0, 1), (0, -1), (-1, 0), (1, 0)])
 
         def crossover(parent1, parent2):
             if len(parent1) < 2 or len(parent2) < 2:
-                return parent1
+                return parent1.copy()
             split1 = random.randint(1, len(parent1) - 2)
             split2 = random.randint(split1, len(parent1) - 1)
             return parent1[:split1] + parent2[split1:split2] + parent1[split2:]
 
         population = [generate_individual() for _ in range(population_size)]
-        best_path = []
+        best_path = None
+        best_fitness = float('-inf')
         stagnation_counter = 0
-        best_fitness = 0
+        stagnation_limit = 20
 
         for generation in range(max_generations):
             population = sorted(population, key=fitness, reverse=True)
@@ -308,25 +327,35 @@ class Pathfinder:
             else:
                 stagnation_counter += 1
 
-            if stagnation_counter >= 10:
+            if stagnation_counter >= stagnation_limit:
                 break
 
             best_individual = population[0]
-            path = []
+            path = [start]
             pos = start
+            visited = set([pos])
+            prev_move = None
             for move in best_individual:
+                if prev_move and is_opposite_move(prev_move, move):
+                    break
                 next_pos = (pos[0] + move[0], pos[1] + move[1])
-                if not is_safe(next_pos):
+                if not is_safe(next_pos) or next_pos in visited:
                     break
                 path.append(next_pos)
+                visited.add(next_pos)
                 pos = next_pos
-            if path:
+                prev_move = move
+                if pos in goals:
+                    break
+
+            # Chấp nhận path nếu nó hợp lệ
+            if path and len(path) > 1:
                 best_path = path
 
-            population = population[:population_size // 2]
-            new_population = []
+            elite_size = population_size // 2
+            new_population = population[:elite_size]
             while len(new_population) < population_size:
-                parent1, parent2 = random.sample(population, 2)
+                parent1, parent2 = random.sample(population[:elite_size], 2)
                 child = crossover(parent1, parent2)
                 mutate(child)
                 new_population.append(child)
@@ -334,4 +363,3 @@ class Pathfinder:
             population = new_population
 
         return best_path if best_path else None
-
