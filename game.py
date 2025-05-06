@@ -1218,7 +1218,7 @@ class Game:
 
             if moving and not self.game_won and not self.game_over:
                 grid = self.get_grid_pos(cx, cy)
-                if self.path_to_target and not self.is_path_safe(self.path_to_target[self.current_target_index:], ghost_pos, danger_radius=4):
+                if self.path_to_target and not self.is_path_safe(self.path_to_target[self.current_target_index:], ghost_pos, danger_radius=3):
                     self.path_to_target = None
                     self.current_target_index = 0
                 if self.path_to_target and self.current_target_index < len(self.path_to_target):
@@ -1286,92 +1286,161 @@ class Game:
 
     def draw_level_menu(self):
         """
-        Hiển thị menu chọn level riêng biệt.
+        Hiển thị menu chọn level với giao diện đẹp hơn.
         """
+        # Tạo nền với hiệu ứng mờ
+        overlay = pygame.Surface((self.WIDTH_SCREEN, self.HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 200))
         self.screen.blit(self.menu_background, (0, 0))
-        title_font = pygame.font.Font("freesansbold.ttf", 50)
-        level_font = pygame.font.Font("freesansbold.ttf", 30)
+        self.screen.blit(overlay, (0, 0))
 
-        title_text = title_font.render("SELECT LEVEL", True, "yellow")
-        title_rect = title_text.get_rect(center=(self.WIDTH_SCREEN // 2, self.HEIGHT * 0.3))
+        # Font và màu sắc
+        title_font = pygame.font.Font("freesansbold.ttf", 60)
+        level_font = pygame.font.Font("freesansbold.ttf", 36)
+        shadow_offset = 3
+
+        # Tiêu đề
+        title_text = title_font.render("SELECT LEVEL", True, (255, 255, 0))
+        title_shadow = title_font.render("SELECT LEVEL", True, (100, 100, 0))
+        title_rect = title_text.get_rect(center=(self.WIDTH_SCREEN // 2, self.HEIGHT * 0.25))
+        self.screen.blit(title_shadow, (title_rect.x + shadow_offset, title_rect.y + shadow_offset))
         self.screen.blit(title_text, title_rect)
 
+        # Các level
         levels = [
-            {"text": "1. Level 1: No Ghosts", "key": pygame.K_1},
-            {"text": "2. Level 2: 1 Ghost", "key": pygame.K_2},
-            {"text": "3. Level 3: 2 Ghosts", "key": pygame.K_3}
+            {"text": "1. Level 1: No Ghosts", "key": pygame.K_1, "color": (255, 255, 255)},
+            {"text": "2. Level 2: 1 Ghost", "key": pygame.K_2, "color": (255, 200, 200)},
+            {"text": "3. Level 3: 2 Ghosts", "key": pygame.K_3, "color": (200, 200, 255)}
         ]
 
-        start_y = self.HEIGHT * 0.35
-        spacing = self.HEIGHT * 0.1
+        start_y = self.HEIGHT * 0.4
+        spacing = self.HEIGHT * 0.12
+        button_width = 400
+        button_height = 60
 
         for i, level in enumerate(levels):
-            level_text = level_font.render(level["text"], True, "white")
-            level_rect = level_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing))
-            self.screen.blit(level_text, level_rect)
+            # Vẽ nút nền
+            button_rect = pygame.Rect(self.WIDTH_SCREEN // 2 - button_width // 2, 
+                                   start_y + i * spacing - button_height // 2, 
+                                   button_width, button_height)
+            pygame.draw.rect(self.screen, (50, 50, 50, 200), button_rect, 0, 10)
+            pygame.draw.rect(self.screen, level["color"], button_rect, 2, 10)
+
+            # Vẽ văn bản
+            level_text = level_font.render(level["text"], True, level["color"])
+            level_shadow = level_font.render(level["text"], True, (50, 50, 50))
+            text_rect = level_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing))
+            self.screen.blit(level_shadow, (text_rect.x + shadow_offset, text_rect.y + shadow_offset))
+            self.screen.blit(level_text, text_rect)
 
         pygame.display.flip()
 
     def draw_menu(self):
         """
-        Hiển thị menu chính với các chế độ chơi.
+        Hiển thị menu chính với giao diện cải tiến.
         """
-        self.screen.blit(self.menu_background, (0, 0))
-        title_font = pygame.font.Font("freesansbold.ttf", 50)
-        menu_font = pygame.font.Font("freesansbold.ttf", 30)
+        # Tạo nền với hiệu ứng gradient
+        for y in range(self.HEIGHT):
+            color = (0, 0, y // 4)
+            pygame.draw.line(self.screen, color, (0, y), (self.WIDTH_SCREEN, y))
+        self.screen.blit(self.menu_background, (0, 0), special_flags=pygame.BLEND_MULT)
 
-        title_text = title_font.render("PAC-MAN AI GAME", True, "yellow")
+        # Font và màu sắc
+        title_font = pygame.font.Font("freesansbold.ttf", 70)
+        menu_font = pygame.font.Font("freesansbold.ttf", 36)
+        desc_font = pygame.font.Font("freesansbold.ttf", 24)
+        shadow_offset = 3
+
+        # Tiêu đề
+        title_text = title_font.render("PAC-MAN AI GAME", True, (255, 255, 0))
+        title_shadow = title_font.render("PAC-MAN AI GAME", True, (100, 100, 0))
         title_rect = title_text.get_rect(center=(self.WIDTH_SCREEN // 2, self.HEIGHT * 0.2))
+        self.screen.blit(title_shadow, (title_rect.x + shadow_offset, title_rect.y + shadow_offset))
         self.screen.blit(title_text, title_rect)
 
+        # Các chế độ chơi
         modes = [
-            {"text": "1. Manual Control", "key": pygame.K_1, "desc": "Use arrow keys to play"},
-            {"text": "2. BFS Algorithm", "key": pygame.K_2, "desc": "AI with Breadth-First Search"},
-            {"text": "3. A* Algorithm", "key": pygame.K_3, "desc": "AI with A* Search"},
-            {"text": "4. Backtracking", "key": pygame.K_4, "desc": "AI with Backtracking"},
-            {"text": "5. Genetic Algorithm", "key": pygame.K_5, "desc": "AI with Genetic Algorithm"}
+            {"text": "1. Manual Control", "key": pygame.K_1, "desc": "Use arrow keys to play", "color": (255, 255, 255)},
+            {"text": "2. BFS Algorithm", "key": pygame.K_2, "desc": "AI with Breadth-First Search", "color": (200, 255, 200)},
+            {"text": "3. A* Algorithm", "key": pygame.K_3, "desc": "AI with A* Search", "color": (200, 200, 255)},
+            {"text": "4. Backtracking", "key": pygame.K_4, "desc": "AI with Backtracking", "color": (255, 200, 200)},
+            {"text": "5. Genetic Algorithm", "key": pygame.K_5, "desc": "AI with Genetic Algorithm", "color": (255, 200, 255)}
         ]
 
         start_y = self.HEIGHT * 0.35
-        spacing = self.HEIGHT * 0.1
+        spacing = self.HEIGHT * 0.12
+        button_width = 500
+        button_height = 80
 
         for i, mode in enumerate(modes):
-            mode_text = menu_font.render(mode["text"], True, "white")
-            mode_rect = mode_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing))
-            self.screen.blit(mode_text, mode_rect)
+            # Vẽ nút nền
+            button_rect = pygame.Rect(self.WIDTH_SCREEN // 2 - button_width // 2, 
+                                   start_y + i * spacing - button_height // 2, 
+                                   button_width, button_height)
+            pygame.draw.rect(self.screen, (50, 50, 50, 200), button_rect, 0, 10)
+            pygame.draw.rect(self.screen, mode["color"], button_rect, 2, 10)
 
-            desc_font = pygame.font.Font("freesansbold.ttf", 20)
-            desc_text = desc_font.render(mode["desc"], True, "gray")
-            desc_rect = desc_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing + 30))
+            # Vẽ văn bản chính
+            mode_text = menu_font.render(mode["text"], True, mode["color"])
+            mode_shadow = menu_font.render(mode["text"], True, (50, 50, 50))
+            text_rect = mode_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing - 15))
+            self.screen.blit(mode_shadow, (text_rect.x + shadow_offset, text_rect.y + shadow_offset))
+            self.screen.blit(mode_text, text_rect)
+
+            # Vẽ mô tả
+            desc_text = desc_font.render(mode["desc"], True, (200, 200, 200))
+            desc_rect = desc_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing + 25))
             self.screen.blit(desc_text, desc_rect)
 
         pygame.display.flip()
 
     def draw_pause_menu(self):
         """
-        Hiển thị menu tạm dừng với các tùy chọn: Tiếp tục, Quay về menu chế độ, Thoát game.
+        Hiển thị menu tạm dừng với giao diện đẹp hơn.
         """
-        self.screen.blit(self.menu_background, (0, 0))
-        title_font = pygame.font.Font("freesansbold.ttf", 50)
-        option_font = pygame.font.Font("freesansbold.ttf", 30)
+        # Tạo hiệu ứng mờ cho nền
+        overlay = pygame.Surface((self.WIDTH_SCREEN, self.HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 200))
+        self.screen.blit(overlay, (0, 0))
 
-        title_text = title_font.render("PAUSED", True, "yellow")
-        title_rect = title_text.get_rect(center=(self.WIDTH_SCREEN // 2, self.HEIGHT * 0.2))
+        # Font và màu sắc
+        title_font = pygame.font.Font("freesansbold.ttf", 60)
+        option_font = pygame.font.Font("freesansbold.ttf", 36)
+        shadow_offset = 3
+
+        # Tiêu đề
+        title_text = title_font.render("PAUSED", True, (255, 255, 0))
+        title_shadow = title_font.render("PAUSED", True, (100, 100, 0))
+        title_rect = title_text.get_rect(center=(self.WIDTH_SCREEN // 2, self.HEIGHT * 0.25))
+        self.screen.blit(title_shadow, (title_rect.x + shadow_offset, title_rect.y + shadow_offset))
         self.screen.blit(title_text, title_rect)
 
+        # Các tùy chọn
         options = [
-            {"text": "1. Continue (P)", "key": pygame.K_1},
-            {"text": "2. Back to Mode Menu", "key": pygame.K_2},
-            {"text": "3. Exit Game", "key": pygame.K_3}
+            {"text": "1. Continue (P)", "key": pygame.K_1, "color": (255, 255, 255)},
+            {"text": "2. Back to Mode Menu", "key": pygame.K_2, "color": (255, 200, 200)},
+            {"text": "3. Exit Game", "key": pygame.K_3, "color": (200, 200, 255)}
         ]
 
-        start_y = self.HEIGHT * 0.35
-        spacing = self.HEIGHT * 0.1
+        start_y = self.HEIGHT * 0.4
+        spacing = self.HEIGHT * 0.12
+        button_width = 400
+        button_height = 60
 
         for i, option in enumerate(options):
-            option_text = option_font.render(option["text"], True, "white")
-            option_rect = option_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing))
-            self.screen.blit(option_text, option_rect)
+            # Vẽ nút nền
+            button_rect = pygame.Rect(self.WIDTH_SCREEN // 2 - button_width // 2, 
+                                   start_y + i * spacing - button_height // 2, 
+                                   button_width, button_height)
+            pygame.draw.rect(self.screen, (50, 50, 50, 200), button_rect, 0, 10)
+            pygame.draw.rect(self.screen, option["color"], button_rect, 2, 10)
+
+            # Vẽ văn bản
+            option_text = option_font.render(option["text"], True, option["color"])
+            option_shadow = option_font.render(option["text"], True, (50, 50, 50))
+            text_rect = option_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing))
+            self.screen.blit(option_shadow, (text_rect.x + shadow_offset, text_rect.y + shadow_offset))
+            self.screen.blit(option_text, text_rect)
 
         pygame.display.flip()
 
