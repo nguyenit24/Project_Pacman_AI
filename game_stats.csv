@@ -4,3 +4,5 @@ Level,Algorithm,Duration,Score,Lives
 1,RTA*,20.71,2460,3
 1,Backtracking,20.52,2460,3
 1,Genetic,30.95,2460,3
+2,A*,21.53,2460,3
+3,RTA*,28.26,2260,0
