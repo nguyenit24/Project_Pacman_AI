@@ -86,8 +86,8 @@ class Pathfinder:
 
         
 
-    def rta_star_avoid_ghosts(self, start, target_list, ghost_positions=None, ghost_radius = 4):
-        """Real-Time A* với tránh ghost."""
+    def A_star(self, start, target_list, ghost_positions=None, ghost_radius = 4):
+ 
         if not target_list:
             return None
 
@@ -144,7 +144,75 @@ class Pathfinder:
                         f_score_new = tentative_g_score + h_score
                         heapq.heappush(open_set, (f_score_new, new_pos, path + [current]))
         return None
+    def rta_star_avoid_ghosts(self, start, target_list, ghost_positions=None, ghost_radius=3, depth_limit=5):
+        if not target_list:
+            return None
 
+        # Làm phẳng ghost_positions
+        flat_ghosts = []
+        if ghost_positions:
+            for group in ghost_positions:
+                if isinstance(group, list):
+                    flat_ghosts.extend(group)
+                else:
+                    flat_ghosts.append(group)
+
+        very_close_threshold = ghost_radius * 0.7
+
+        def compute_penalty(pos, ghosts, ghost_radius):
+            penalty = 0
+            for ghost in ghosts:
+                d = self.heuristic(pos, ghost)
+                if d < very_close_threshold:
+                    penalty += 10000  # Tránh tuyệt đối
+                elif d < ghost_radius:
+                    penalty += (ghost_radius - d) * 50  # Tăng penalty để ưu tiên xa ghost
+            return penalty
+
+        # Mỗi nút: (f_score, current, path, depth)
+        open_set = [(0, start, [], 0)]
+        heapq.heapify(open_set)
+        visited = set()
+        best_candidate = None
+        best_f = float("inf")
+
+        while open_set:
+            f, current, path, depth = heapq.heappop(open_set)
+
+            if current in visited:
+                continue
+            visited.add(current)
+
+            # Nếu đạt độ sâu giới hạn, cập nhật bước đi hiện tại nếu tốt hơn
+            if depth >= depth_limit:
+                if f < best_f:
+                    best_candidate = path + [current]
+                    best_f = f
+                continue
+
+            # Nếu current là mục tiêu thì trả về
+            if current in target_list:
+                return path + [current]
+
+            # Mở rộng nút
+            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                new_r, new_c = current[0] + dx, current[1] + dy
+                new_pos = (new_r, new_c)
+                if (0 <= new_r < len(self.level) and 
+                    0 <= new_c < len(self.level[0]) and 
+                    self.level[new_r][new_c] < 3 and 
+                    new_pos not in visited):
+                    penalty = compute_penalty(new_pos, flat_ghosts, ghost_radius) if flat_ghosts else 0
+                    g_new = (len(path) + 1) + penalty
+                    h = min(self.heuristic(new_pos, targ) for targ in target_list)
+                    heapq.heappush(open_set, (g_new + h, new_pos, path + [current], depth + 1))
+
+        if best_candidate and len(best_candidate) >= 2:
+            return best_candidate[:2]  # Trả về [start, next_step]
+        elif best_candidate:
+            return best_candidate  # Trả về bước duy nhất nếu chỉ có một bước
+        else:
+            return None
     def find_dot_safe(self, current_pos, ghost_pos, ghost_radius = 4):
         """Tìm dot an toàn và điểm an toàn nếu cần."""
         dots = []

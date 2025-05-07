@@ -3,15 +3,16 @@ import heapq
 import math
 import random
 from collections import deque
-
+import logging
 import pygame
-
+import numpy as np
 from board import boards
 from ghost import Ghost
 from logic import Pathfinder
 from player import Player
-
-
+import csv  # Thêm thư viện CSV
+import matplotlib.pyplot as plt 
+import os
 class Game:
     def __init__(self):
         pygame.init()
@@ -43,13 +44,13 @@ class Game:
         self.start_time = None
         self.bfs_times = []
         self.astar_times = []
+        self.rtastar_times = []  # Added for RTA* times
         self.backtracking_times = []
         self.genetic_times = []
         self.level_menu = True
         self.menu = False
-        self.paused = False  # Thêm trạng thái tạm dừng
+        self.paused = False
         self.game_level = 1
-        
         self.eaten_ghost = []
         self.ghost_speeds = []
         self.ghosts = []
@@ -64,6 +65,47 @@ class Game:
         except pygame.error:
             self.menu_background = pygame.Surface((self.WIDTH_SCREEN, self.HEIGHT))
             self.menu_background.fill((0, 0, 0))
+
+        self.csv_file_path = os.path.join(os.path.dirname(__file__), "game_stats.csv")
+        self.initialize_csv()
+    def initialize_csv(self):
+        """Initialize the CSV file with a header if it doesn't exist."""
+        try:
+            if not os.path.exists(self.csv_file_path):
+                with open(self.csv_file_path, mode="w", newline="") as file:
+                    writer = csv.writer(file)
+                    writer.writerow(["Level", "Algorithm", "Duration", "Score", "Lives"])  # Added Algorithm column
+                logging.info(f"Created CSV file at {self.csv_file_path} with header.")
+            else:
+                logging.info(f"CSV file already exists at {self.csv_file_path}.")
+        except Exception as e:
+            logging.error(f"Failed to create CSV file at {self.csv_file_path}: {e}")
+
+    def save_game_data(self, level, algorithm, duration, score, lives):
+        """Save game data to CSV file."""
+        try:
+            # Validate input data
+            if not isinstance(level, int) or level < 1:
+                raise ValueError("Level must be a positive integer.")
+            if not isinstance(algorithm, str):
+                raise ValueError("Algorithm must be a string.")
+            if not isinstance(duration, (int, float)) or duration < 0:
+                raise ValueError("Duration must be a non-negative number.")
+            if not isinstance(score, int) or score < 0:
+                raise ValueError("Score must be a non-negative integer.")
+            if not isinstance(lives, int) or lives < 0:
+                raise ValueError("Lives must be a non-negative integer.")
+
+            with open(self.csv_file_path, mode="a", newline="") as file:
+                writer = csv.writer(file)
+                writer.writerow([level, algorithm, f"{duration:.2f}", score, lives])
+            logging.info(f"Data saved to {self.csv_file_path}: Level={level}, Algorithm={algorithm}, Duration={duration:.2f}, Score={score}, Lives={lives}")
+        except PermissionError:
+            logging.error(f"Permission denied when writing to {self.csv_file_path}. Ensure the program has write access.")
+        except ValueError as ve:
+            logging.error(f"Invalid data provided: {ve}")
+        except Exception as e:
+            logging.error(f"Error saving data to {self.csv_file_path}: {e}")
 
     def draw_misc(self):
         score_text = self.font.render(f"Score: {self.player.score}", True, "white")
@@ -85,32 +127,46 @@ class Game:
             gameover_text = self.font.render("Victory! Space bar to restart!", True, "green")
             self.screen.blit(gameover_text, (100, 300))
 
-        pygame.draw.rect(self.screen, "gray", [self.WIDTH_SCREEN - 160, 10, 150, self.HEIGHT // 2 - 150], 0, 5)
+        pygame.draw.rect(self.screen, "gray", [self.WIDTH_SCREEN - 160, 10, 150, self.HEIGHT // 2 - 50], 0, 5)
         time_title = self.font.render("Time (s)", True, "white")
         self.screen.blit(time_title, (self.WIDTH_SCREEN - 150, 20))
         current_time_text = self.font.render(f"Current: {self.game_duration:.2f}", True, "white")
         self.screen.blit(current_time_text, (self.WIDTH_SCREEN - 150, 50))
+
+        # BFS Times
         bfs_title = self.font.render("BFS:", True, "yellow")
         self.screen.blit(bfs_title, (self.WIDTH_SCREEN - 150, 80))
         for i, t in enumerate(self.bfs_times[:4]):
             bfs_time_text = self.font.render(f"{i+1}. {t:.2f}", True, "yellow")
             self.screen.blit(bfs_time_text, (self.WIDTH_SCREEN - 150, 100 + i * 20))
+
+        # A* Times
         astar_title = self.font.render("A*:", True, "yellow")
         self.screen.blit(astar_title, (self.WIDTH_SCREEN - 150, 180))
         for i, t in enumerate(self.astar_times[:4]):
             astar_time_text = self.font.render(f"{i+1}. {t:.2f}", True, "yellow")
             self.screen.blit(astar_time_text, (self.WIDTH_SCREEN - 150, 200 + i * 20))
+
+        # Real-Time A* Times
+        rtastar_title = self.font.render("RT A*:", True, "yellow")
+        self.screen.blit(rtastar_title, (self.WIDTH_SCREEN - 150, 280))
+        for i, t in enumerate(self.rtastar_times[:4]):  # Fixed to use rtastar_times
+            rtastar_time_text = self.font.render(f"{i+1}. {t:.2f}", True, "yellow")
+            self.screen.blit(rtastar_time_text, (self.WIDTH_SCREEN - 150, 300 + i * 20))
+
+        # Backtracking Times
         backtracking_title = self.font.render("Backtracking:", True, "yellow")
-        self.screen.blit(backtracking_title, (self.WIDTH_SCREEN - 150, 280))
+        self.screen.blit(backtracking_title, (self.WIDTH_SCREEN - 150, 380))
         for i, t in enumerate(self.backtracking_times[:4]):
             backtracking_time_text = self.font.render(f"{i+1}. {t:.2f}", True, "yellow")
-            self.screen.blit(backtracking_time_text, (self.WIDTH_SCREEN - 150, 300 + i * 20))
+            self.screen.blit(backtracking_time_text, (self.WIDTH_SCREEN - 150, 400 + i * 20))
+
+        # Genetic Times
         genetic_title = self.font.render("Genetic:", True, "yellow")
-        self.screen.blit(genetic_title, (self.WIDTH_SCREEN - 150, 380))
+        self.screen.blit(genetic_title, (self.WIDTH_SCREEN - 150, 480))
         for i, t in enumerate(self.genetic_times[:4]):
             genetic_time_text = self.font.render(f"{i+1}. {t:.2f}", True, "yellow")
-            self.screen.blit(genetic_time_text, (self.WIDTH_SCREEN - 150, 400 + i * 20))
-
+            self.screen.blit(genetic_time_text, (self.WIDTH_SCREEN - 150, 500 + i * 20))
     def draw_board(self):
         num1 = (self.HEIGHT - 50) // 32
         num2 = self.WIDTH // 30
@@ -327,6 +383,24 @@ class Game:
         return targets
 
     def reset(self):
+        """Reset game state and save data if necessary."""
+        # Save game data before resetting if game is over or won
+        if self.game_won or self.game_over:
+            duration = self.game_duration
+            score = self.player.score
+            lives = self.player.lives
+            algorithm = {
+                0: "Manual",
+                1: "BFS",
+                2: "A*",
+                3: "Backtracking",
+                4: "Genetic",
+                5: "RTA*"
+            }.get(self.game_mode, "Unknown")
+            logging.info(f"Attempting to save data: Level={self.game_level}, Algorithm={algorithm}, Duration={duration:.2f}, Score={score}, Lives={lives}")
+            self.save_game_data(self.game_level, algorithm, duration, score, lives)
+
+        # Reset game state
         self.powerup = False
         self.power_counter = 0
         self.startup_counter = 0
@@ -350,7 +424,6 @@ class Game:
             self.ghosts.append(Ghost(450, 400, (self.player.x, self.player.y), self.ghost_speeds[0], self.blinky_img, 0, False, True, 0, self.level))
         if self.game_level >= 3:
             self.ghosts.append(Ghost(450, 400, (self.player.x, self.player.y), self.ghost_speeds[1], self.pinky_img, 1, False, True, 0, self.level))
-
     def run(self):
         run = True
         selected_mode = None
@@ -362,6 +435,18 @@ class Game:
                 self.draw_level_menu()
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
+                        if self.start_time is not None:
+                            self.game_duration = (pygame.time.get_ticks() - self.start_time) / 1000.0
+                            algorithm = {
+                                0: "Manual",
+                                1: "BFS",
+                                2: "A*",
+                                3: "Backtracking",
+                                4: "Genetic",
+                                5: "RTA*"
+                            }.get(self.game_mode, "Unknown")
+                            logging.info(f"Saving data on quit: Level={self.game_level}, Algorithm={algorithm}, Duration={self.game_duration:.2f}, Score={self.player.score}, Lives={self.player.lives}")
+                            self.save_game_data(self.game_level, algorithm, self.game_duration, self.player.score, self.player.lives)
                         run = False
                     elif event.type == pygame.KEYDOWN:
                         if event.key == pygame.K_1:
@@ -384,6 +469,18 @@ class Game:
                 self.draw_menu()
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
+                        if self.start_time is not None:
+                            self.game_duration = (pygame.time.get_ticks() - self.start_time) / 1000.0
+                            algorithm = {
+                                0: "Manual",
+                                1: "BFS",
+                                2: "A*",
+                                3: "Backtracking",
+                                4: "Genetic",
+                                5: "RTA*"
+                            }.get(self.game_mode, "Unknown")
+                            logging.info(f"Saving data on quit: Level={self.game_level}, Algorithm={algorithm}, Duration={self.game_duration:.2f}, Score={self.player.score}, Lives={self.player.lives}")
+                            self.save_game_data(self.game_level, algorithm, self.game_duration, self.player.score, self.player.lives)
                         run = False
                     elif event.type == pygame.KEYDOWN:
                         if event.key == pygame.K_1:
@@ -402,15 +499,22 @@ class Game:
                             self.paused = False
                             self.start_time = pygame.time.get_ticks()
                         elif event.key == pygame.K_4:
-                            selected_mode = self.run_backtracking
+                            selected_mode = self.run_rtastar
                             self.menu = False
                             self.paused = False
                             self.start_time = pygame.time.get_ticks()
                         elif event.key == pygame.K_5:
+                            selected_mode = self.run_backtracking
+                            self.menu = False
+                            self.paused = False
+                            self.start_time = pygame.time.get_ticks()
+                        elif event.key == pygame.K_6:
                             selected_mode = self.run_genetic
                             self.menu = False
                             self.paused = False
                             self.start_time = pygame.time.get_ticks()
+                        elif event.key == pygame.K_7:
+                            self.show_statistics()
 
             else:
                 if selected_mode and not self.paused:
@@ -421,6 +525,18 @@ class Game:
                     self.draw_pause_menu()
                 for event in pygame.event.get():
                     if event.type == pygame.QUIT:
+                        if self.start_time is not None:
+                            self.game_duration = (pygame.time.get_ticks() - self.start_time) / 1000.0
+                            algorithm = {
+                                0: "Manual",
+                                1: "BFS",
+                                2: "A*",
+                                3: "Backtracking",
+                                4: "Genetic",
+                                5: "RTA*"
+                            }.get(self.game_mode, "Unknown")
+                            logging.info(f"Saving data on quit: Level={self.game_level}, Algorithm={algorithm}, Duration={self.game_duration:.2f}, Score={self.player.score}, Lives={self.player.lives}")
+                            self.save_game_data(self.game_level, algorithm, self.game_duration, self.player.score, self.player.lives)
                         run = False
                     elif event.type == pygame.KEYDOWN:
                         if event.key == pygame.K_SPACE and (self.game_over or self.game_won):
@@ -629,7 +745,7 @@ class Game:
         if min_ghost_dist <= 3:
             safe_dot = None
             for dot in dots:
-                path = self.logic.rta_star_avoid_ghosts(current_pos, [dot], ghost_positions=ghost_pos)
+                path = self.logic.A_star(current_pos, [dot], ghost_positions=ghost_pos)
                 if path:
                     safe_dot = dot
                     break
@@ -639,7 +755,7 @@ class Game:
                     if self.level[i][j] < 3:
                         pos = (i, j)
                         if all(self.logic.heuristic(pos, ghost) >= 5 for ghost in ghost_pos):
-                            path = self.logic.rta_star_avoid_ghosts(current_pos, [pos], ghost_positions=ghost_pos)
+                            path = self.logic.A_star(current_pos, [pos], ghost_positions=ghost_pos)
                             if path:
                                 safe_point = pos
                                 break
@@ -767,6 +883,8 @@ class Game:
             if self.game_won:
                 if self.game_duration not in self.astar_times:
                     self.astar_times.insert(0, self.game_duration)
+                    logging.info(f"A* completed Level {self.game_level} in {self.game_duration:.2f}s")
+                    self.save_game_data(self.game_level, "A*", self.game_duration, self.player.score, self.player.lives)
 
             pygame.draw.circle(self.screen, "black", (center_x, center_y), 20, 2)
             self.player.draw(self.screen, self.counter)
@@ -781,12 +899,12 @@ class Game:
                 safe_dot, safe_point = self.find_dot_safe(current_grid_pos, ghost_pos)
                 if self.path_to_target is None or self.current_target_index >= len(self.path_to_target) or (self.path_to_target and self.path_to_target[0] != current_grid_pos):
                     if safe_dot:
-                        candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, [safe_dot], ghost_positions=ghost_pos)
+                        candidate = self.logic.A_star(current_grid_pos, [safe_dot], ghost_positions=ghost_pos)
                     elif safe_point:
-                        candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, [safe_point], ghost_positions=ghost_pos)
+                        candidate = self.logic.A_star(current_grid_pos, [safe_point], ghost_positions=ghost_pos)
                     else:
                         dots = self.find_dots()
-                        candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, dots, ghost_positions=ghost_pos) if dots else None
+                        candidate = self.logic.A_star(current_grid_pos, dots, ghost_positions=ghost_pos) if dots else None
                     if candidate:
                         self.path_to_target = candidate
                         self.current_target_index = 1
@@ -838,6 +956,146 @@ class Game:
             self.draw_ghost_radii(ghost_radius=3)
             pygame.display.flip()
 
+    def run_rtastar(self):
+        run = True
+        self.game_mode = 5
+        moving = False
+
+        while run:
+            self.timer.tick(self.fps)
+            if self.paused:
+                self.draw_pause_menu()
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        run = False
+                        return
+                    elif event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_p:
+                            self.paused = False
+                        elif event.key == pygame.K_1:
+                            self.paused = False
+                        elif event.key == pygame.K_2:
+                            self.reset()
+                            self.menu = True
+                            self.level_menu = True
+                            self.paused = False
+                            run = False
+                            return
+                        elif event.key == pygame.K_3:
+                            pygame.quit()
+                            return
+                pygame.display.flip()
+                continue
+
+            if not self.game_won and not self.game_over:
+                current_time = pygame.time.get_ticks()
+                self.game_duration = (current_time - self.start_time) / 1000.0
+
+            self.counter = (self.counter + 1) % 20
+            self.flicker = (self.counter <= 3)
+            if self.powerup:
+                self.power_counter += 1
+                if self.power_counter >= 600:
+                    self.powerup, self.power_counter = False, 0
+
+            if self.startup_counter < 30 and not self.game_over and not self.game_won:
+                moving = False
+                self.startup_counter += 1
+            else:
+                moving = True
+
+            if self.startup_counter_ghost < 60:
+                self.startup_counter_ghost += 1
+            else:
+                targets = self.get_targets()
+                for i, ghost in enumerate(self.ghosts):
+                    ghost.target = targets[i] if i < len(targets) else ""
+                    ghost.update_state(self.powerup, self.eaten_ghost, self.ghost_speeds[i], ghost.x_pos, ghost.y_pos)
+                    move_fn = ghost.move_clyde if ghost.in_box or ghost.dead else (
+                        ghost.move_blinky if i == 0 else ghost.move_pinky
+                    )
+                    if ghost.in_box:
+                        ghost.dead = False
+                    ghost.x_pos, ghost.y_pos, ghost.direction = move_fn()
+                    ghost.center_x = ghost.x_pos + 22
+                    ghost.center_y = ghost.y_pos + 22
+                    ghost.turns, ghost.in_box = ghost.check_collisions()
+
+            ghost_pos = self.predict_ghost_positions(self.ghosts, steps=4)
+
+            self.screen.fill("black")
+            self.draw_board()
+            self.draw_grid()
+            cx, cy = self.player.get_center()
+
+            self.game_won = all(1 not in row and 2 not in row for row in self.level)
+            if self.game_won:
+                if self.game_duration not in self.rtastar_times:
+                    self.rtastar_times.insert(0, self.game_duration)
+                    logging.info(f"RTA* completed Level {self.game_level} in {self.game_duration:.2f}s")
+                    self.save_game_data(self.game_level, "RTA*", self.game_duration, self.player.score, self.player.lives)
+
+            self.player.draw(self.screen, self.counter)
+            self.draw_misc()
+            self.turns_allowed = self.check_position(cx, cy)
+
+            if moving and not self.game_won:
+                current_grid_pos = self.get_grid_pos(cx, cy)
+                if self.path_to_target and not self.is_path_safe(self.path_to_target[self.current_target_index:], ghost_pos, danger_radius=3):
+                    self.path_to_target = None
+                    self.current_target_index = 0
+                safe_dot, safe_point = self.find_dot_safe(current_grid_pos, ghost_pos)
+                if self.path_to_target is None or self.current_target_index >= len(self.path_to_target) or (self.path_to_target and self.path_to_target[0] != current_grid_pos):
+                    if safe_dot:
+                        candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, [safe_dot], ghost_positions=ghost_pos, ghost_radius=5, depth_limit=10)
+                    elif safe_point:
+                        candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, [safe_point], ghost_positions=ghost_pos, ghost_radius=5, depth_limit=10)
+                    else:
+                        dots = self.find_dots()
+                        candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, dots, ghost_positions=ghost_pos, ghost_radius=5, depth_limit=10) if dots else None
+                    if candidate:
+                        self.path_to_target = candidate
+                        self.current_target_index = 1
+                    else:
+                        self.path_to_target = None
+                if self.path_to_target and self.current_target_index < len(self.path_to_target):
+                    next_grid_pos = self.path_to_target[self.current_target_index]
+                    if self.is_at_center(self.player.x, self.player.y, current_grid_pos):
+                        if current_grid_pos == next_grid_pos:
+                            self.current_target_index += 1
+                        else:
+                            self.player.direction = self.get_direction_from_path(current_grid_pos, next_grid_pos)
+                            if self.turns_allowed[self.player.direction]:
+                                self.player.move(self.turns_allowed)
+                    else:
+                        if self.turns_allowed[self.player.direction]:
+                            self.player.move(self.turns_allowed)
+
+            for ghost in self.ghosts:
+                ghost.draw()
+            self.powerup, self.power_counter = self.check_collisions()
+            if self.check_ghost_collisions():
+                moving = False
+                self.startup_counter = 0
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    run = False
+                    self.menu = True
+                    return
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_p:
+                        self.paused = True
+                    if event.key == pygame.K_SPACE and (self.game_over or self.game_won):
+                        self.reset()
+                        self.menu = True
+                        self.level_menu = True
+                        run = False
+                        return
+
+            self.draw_path()
+            self.draw_ghost_radii(ghost_radius=3)
+            pygame.display.flip()
     def run_BFS(self):
         run = True
         self.game_mode = 1
@@ -909,7 +1167,6 @@ class Game:
                     ghost.center_y = ghost.y_pos + 22
                     ghost.turns, ghost.in_box = ghost.check_collisions()
 
-            # ghost_pos = [self.get_surrounding_positions(ghost.center_x, ghost.center_y) for ghost in self.ghosts]
             ghost_pos = []
             self.screen.fill("black")
             self.draw_board()
@@ -920,6 +1177,8 @@ class Game:
             if self.game_won:
                 if self.game_duration not in self.bfs_times:
                     self.bfs_times.insert(0, self.game_duration)
+                    logging.info(f"BFS completed Level {self.game_level} in {self.game_duration:.2f}s")
+                    self.save_game_data(self.game_level, "BFS", self.game_duration, self.player.score, self.player.lives)
 
             pygame.draw.circle(self.screen, "black", (center_x, center_y), 20, 2)
             self.player.draw(self.screen, self.counter)
@@ -1053,8 +1312,11 @@ class Game:
             cx, cy = self.player.get_center()
 
             self.game_won = all(1 not in row and 2 not in row for row in self.level)
-            if self.game_won and self.game_duration not in self.backtracking_times:
-                self.backtracking_times.insert(0, self.game_duration)
+            if self.game_won:
+                if self.game_duration not in self.backtracking_times:
+                    self.backtracking_times.insert(0, self.game_duration)
+                    logging.info(f"Backtracking completed Level {self.game_level} in {self.game_duration:.2f}s")
+                    self.save_game_data(self.game_level, "Backtracking", self.game_duration, self.player.score, self.player.lives)
 
             self.player.draw(self.screen, self.counter)
             self.draw_misc()
@@ -1209,8 +1471,11 @@ class Game:
             cx, cy = self.player.get_center()
 
             self.game_won = all(1 not in row and 2 not in row for row in self.level)
-            if self.game_won and self.game_duration not in self.genetic_times:
-                self.genetic_times.insert(0, self.game_duration)
+            if self.game_won:
+                if self.game_duration not in self.genetic_times:
+                    self.genetic_times.insert(0, self.game_duration)
+                    logging.info(f"Genetic completed Level {self.game_level} in {self.game_duration:.2f}s")
+                    self.save_game_data(self.game_level, "Genetic", self.game_duration, self.player.score, self.player.lives)
 
             self.player.draw(self.screen, self.counter)
             self.draw_misc()
@@ -1283,95 +1548,236 @@ class Game:
             self.draw_path()
             self.draw_ghost_radii(ghost_radius=3)
             pygame.display.flip()
-
     def draw_level_menu(self):
         """
-        Hiển thị menu chọn level riêng biệt.
+        Hiển thị menu chọn level với giao diện đẹp hơn.
         """
+        # Tạo nền với hiệu ứng mờ
+        overlay = pygame.Surface((self.WIDTH_SCREEN, self.HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 200))
         self.screen.blit(self.menu_background, (0, 0))
-        title_font = pygame.font.Font("freesansbold.ttf", 50)
-        level_font = pygame.font.Font("freesansbold.ttf", 30)
+        self.screen.blit(overlay, (0, 0))
 
-        title_text = title_font.render("SELECT LEVEL", True, "yellow")
-        title_rect = title_text.get_rect(center=(self.WIDTH_SCREEN // 2, self.HEIGHT * 0.3))
+        # Font và màu sắc
+        title_font = pygame.font.Font("freesansbold.ttf", 60)
+        level_font = pygame.font.Font("freesansbold.ttf", 36)
+        shadow_offset = 3
+
+        # Tiêu đề
+        title_text = title_font.render("SELECT LEVEL", True, (255, 255, 0))
+        title_shadow = title_font.render("SELECT LEVEL", True, (100, 100, 0))
+        title_rect = title_text.get_rect(center=(self.WIDTH_SCREEN // 2, self.HEIGHT * 0.25))
+        self.screen.blit(title_shadow, (title_rect.x + shadow_offset, title_rect.y + shadow_offset))
         self.screen.blit(title_text, title_rect)
 
+        # Các level
         levels = [
-            {"text": "1. Level 1: No Ghosts", "key": pygame.K_1},
-            {"text": "2. Level 2: 1 Ghost", "key": pygame.K_2},
-            {"text": "3. Level 3: 2 Ghosts", "key": pygame.K_3}
+            {"text": "1. Level 1: No Ghosts", "key": pygame.K_1, "color": (255, 255, 255)},
+            {"text": "2. Level 2: 1 Ghost", "key": pygame.K_2, "color": (255, 200, 200)},
+            {"text": "3. Level 3: 2 Ghosts", "key": pygame.K_3, "color": (200, 200, 255)}
         ]
 
-        start_y = self.HEIGHT * 0.35
-        spacing = self.HEIGHT * 0.1
+        start_y = self.HEIGHT * 0.4
+        spacing = self.HEIGHT * 0.12
+        button_width = 400
+        button_height = 60
 
         for i, level in enumerate(levels):
-            level_text = level_font.render(level["text"], True, "white")
-            level_rect = level_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing))
-            self.screen.blit(level_text, level_rect)
+            # Vẽ nút nền
+            button_rect = pygame.Rect(self.WIDTH_SCREEN // 2 - button_width // 2, 
+                                   start_y + i * spacing - button_height // 2, 
+                                   button_width, button_height)
+            pygame.draw.rect(self.screen, (50, 50, 50, 200), button_rect, 0, 10)
+            pygame.draw.rect(self.screen, level["color"], button_rect, 2, 10)
+
+            # Vẽ văn bản
+            level_text = level_font.render(level["text"], True, level["color"])
+            level_shadow = level_font.render(level["text"], True, (50, 50, 50))
+            text_rect = level_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing))
+            self.screen.blit(level_shadow, (text_rect.x + shadow_offset, text_rect.y + shadow_offset))
+            self.screen.blit(level_text, text_rect)
 
         pygame.display.flip()
+    def show_statistics(self):
+        """Hiển thị thống kê từ file CSV, so sánh các thuật toán theo level."""
+        try:
+            with open(self.csv_file_path, mode="r") as file:
+                reader = csv.reader(file)
+                header = next(reader)  # Bỏ qua dòng tiêu đề
+                data = list(reader)
+        except FileNotFoundError:
+            print("No statistics available.")
+            logging.warning(f"CSV file {self.csv_file_path} not found.")
+            return
 
+        # Filter data for the current level
+        level_data = [row for row in data if int(row[0]) == self.game_level]
+        if not level_data:
+            print(f"No statistics available for Level {self.game_level}.")
+            logging.warning(f"No data found for Level {self.game_level}.")
+            return
+
+        # Group data by algorithm
+        algorithms = list(set(row[1] for row in level_data))  # Get unique algorithms
+        durations = {algo: [] for algo in algorithms}
+        scores = {algo: [] for algo in algorithms}
+        lives = {algo: [] for algo in algorithms}
+
+        for row in level_data:
+            algo = row[1]
+            durations[algo].append(float(row[2]))
+            scores[algo].append(int(row[3]))
+            lives[algo].append(int(row[4]))
+
+        # Calculate average metrics
+        avg_durations = [np.mean(durations[algo]) if durations[algo] else 0 for algo in algorithms]
+        avg_scores = [np.mean(scores[algo]) if scores[algo] else 0 for algo in algorithms]
+        avg_lives = [np.mean(lives[algo]) if lives[algo] else 0 for algo in algorithms]
+
+        # Create bar chart for comparison
+        plt.figure(figsize=(12, 8))
+
+        # Plot Duration
+        plt.subplot(3, 1, 1)
+        bars = plt.bar(algorithms, avg_durations, color="blue", alpha=0.7)
+        plt.title(f"Average Duration by Algorithm (Level {self.game_level})")
+        plt.xlabel("Algorithm")
+        plt.ylabel("Duration (s)")
+        for bar in bars:
+            yval = bar.get_height()
+            plt.text(bar.get_x() + bar.get_width()/2, yval, f"{yval:.2f}", ha="center", va="bottom")
+
+        # Plot Score
+        plt.subplot(3, 1, 2)
+        bars = plt.bar(algorithms, avg_scores, color="green", alpha=0.7)
+        plt.title(f"Average Score by Algorithm (Level {self.game_level})")
+        plt.xlabel("Algorithm")
+        plt.ylabel("Score")
+        for bar in bars:
+            yval = bar.get_height()
+            plt.text(bar.get_x() + bar.get_width()/2, yval, f"{yval:.0f}", ha="center", va="bottom")
+
+        # Plot Lives
+        plt.subplot(3, 1, 3)
+        bars = plt.bar(algorithms, avg_lives, color="red", alpha=0.7)
+        plt.title(f"Average Remaining Lives by Algorithm (Level {self.game_level})")
+        plt.xlabel("Algorithm")
+        plt.ylabel("Lives")
+        for bar in bars:
+            yval = bar.get_height()
+            plt.text(bar.get_x() + bar.get_width()/2, yval, f"{yval:.1f}", ha="center", va="bottom")
+
+        plt.tight_layout()
+        plt.show()
+        logging.info(f"Displayed statistics for Level {self.game_level}: {algorithms}")
     def draw_menu(self):
         """
-        Hiển thị menu chính với các chế độ chơi.
+        Hiển thị menu chính với giao diện cải tiến.
         """
-        self.screen.blit(self.menu_background, (0, 0))
-        title_font = pygame.font.Font("freesansbold.ttf", 50)
-        menu_font = pygame.font.Font("freesansbold.ttf", 30)
+        # Tạo nền với hiệu ứng gradient
+        for y in range(self.HEIGHT):
+            color = (0, 0, y // 4)
+            pygame.draw.line(self.screen, color, (0, y), (self.WIDTH_SCREEN, y))
+        self.screen.blit(self.menu_background, (0, 0), special_flags=pygame.BLEND_MULT)
 
-        title_text = title_font.render("PAC-MAN AI GAME", True, "yellow")
-        title_rect = title_text.get_rect(center=(self.WIDTH_SCREEN // 2, self.HEIGHT * 0.2))
+        # Font và màu sắc
+        title_font = pygame.font.Font("freesansbold.ttf", 70)
+        menu_font = pygame.font.Font("freesansbold.ttf", 36)
+        desc_font = pygame.font.Font("freesansbold.ttf", 24)
+        shadow_offset = 3
+
+        # Tiêu đề
+        title_text = title_font.render("PAC-MAN AI GAME", True, (255, 255, 0))
+        title_shadow = title_font.render("PAC-MAN AI GAME", True, (100, 100, 0))
+        title_rect = title_text.get_rect(center=(self.WIDTH_SCREEN // 2, self.HEIGHT * 0.1))
+        self.screen.blit(title_shadow, (title_rect.x + shadow_offset, title_rect.y + shadow_offset))
         self.screen.blit(title_text, title_rect)
 
+        # Các chế độ chơi
         modes = [
-            {"text": "1. Manual Control", "key": pygame.K_1, "desc": "Use arrow keys to play"},
-            {"text": "2. BFS Algorithm", "key": pygame.K_2, "desc": "AI with Breadth-First Search"},
-            {"text": "3. A* Algorithm", "key": pygame.K_3, "desc": "AI with A* Search"},
-            {"text": "4. Backtracking", "key": pygame.K_4, "desc": "AI with Backtracking"},
-            {"text": "5. Genetic Algorithm", "key": pygame.K_5, "desc": "AI with Genetic Algorithm"}
+        {"text": "1. Manual Control", "key": pygame.K_1, "desc": "Use arrow keys to play", "color": (255, 255, 255)},
+        {"text": "2. BFS Algorithm", "key": pygame.K_2, "desc": "AI with Breadth-First Search", "color": (200, 255, 200)},
+        {"text": "3. A* Algorithm", "key": pygame.K_3, "desc": "AI with A* Search", "color": (200, 200, 255)},
+        {"text": "4. Real Time A*", "key": pygame.K_4, "desc": "AI with Real Time A*", "color": (255, 200, 255)},
+        {"text": "5. Backtracking", "key": pygame.K_5, "desc": "AI with Backtracking", "color": (255, 200, 200)},
+        {"text": "6. Genetic Algorithm", "key": pygame.K_6, "desc": "AI with Genetic Algorithm", "color": (255, 200, 255)},
+        {"text": "7. Statistics", "key": pygame.K_7, "desc": "View game statistics", "color": (255, 255, 0)}  # Thêm nút thống kê
         ]
 
-        start_y = self.HEIGHT * 0.35
-        spacing = self.HEIGHT * 0.1
+        start_y = self.HEIGHT * 0.2
+        spacing = self.HEIGHT * 0.12
+        button_width = 500
+        button_height = 80
 
         for i, mode in enumerate(modes):
-            mode_text = menu_font.render(mode["text"], True, "white")
-            mode_rect = mode_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing))
-            self.screen.blit(mode_text, mode_rect)
+            # Vẽ nút nền
+            button_rect = pygame.Rect(self.WIDTH_SCREEN // 2 - button_width // 2, 
+                                   start_y + i * spacing - button_height // 2, 
+                                   button_width, button_height)
+            pygame.draw.rect(self.screen, (50, 50, 50, 200), button_rect, 0, 10)
+            pygame.draw.rect(self.screen, mode["color"], button_rect, 2, 10)
 
-            desc_font = pygame.font.Font("freesansbold.ttf", 20)
-            desc_text = desc_font.render(mode["desc"], True, "gray")
-            desc_rect = desc_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing + 30))
+            # Vẽ văn bản chính
+            mode_text = menu_font.render(mode["text"], True, mode["color"])
+            mode_shadow = menu_font.render(mode["text"], True, (50, 50, 50))
+            text_rect = mode_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing - 15))
+            self.screen.blit(mode_shadow, (text_rect.x + shadow_offset, text_rect.y + shadow_offset))
+            self.screen.blit(mode_text, text_rect)
+
+            # Vẽ mô tả
+            desc_text = desc_font.render(mode["desc"], True, (200, 200, 200))
+            desc_rect = desc_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing + 25))
             self.screen.blit(desc_text, desc_rect)
 
         pygame.display.flip()
 
     def draw_pause_menu(self):
         """
-        Hiển thị menu tạm dừng với các tùy chọn: Tiếp tục, Quay về menu chế độ, Thoát game.
+        Hiển thị menu tạm dừng với giao diện đẹp hơn.
         """
-        self.screen.blit(self.menu_background, (0, 0))
-        title_font = pygame.font.Font("freesansbold.ttf", 50)
-        option_font = pygame.font.Font("freesansbold.ttf", 30)
+        # Tạo hiệu ứng mờ cho nền
+        overlay = pygame.Surface((self.WIDTH_SCREEN, self.HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 200))
+        self.screen.blit(overlay, (0, 0))
 
-        title_text = title_font.render("PAUSED", True, "yellow")
-        title_rect = title_text.get_rect(center=(self.WIDTH_SCREEN // 2, self.HEIGHT * 0.2))
+        # Font và màu sắc
+        title_font = pygame.font.Font("freesansbold.ttf", 60)
+        option_font = pygame.font.Font("freesansbold.ttf", 36)
+        shadow_offset = 3
+
+        # Tiêu đề
+        title_text = title_font.render("PAUSED", True, (255, 255, 0))
+        title_shadow = title_font.render("PAUSED", True, (100, 100, 0))
+        title_rect = title_text.get_rect(center=(self.WIDTH_SCREEN // 2, self.HEIGHT * 0.25))
+        self.screen.blit(title_shadow, (title_rect.x + shadow_offset, title_rect.y + shadow_offset))
         self.screen.blit(title_text, title_rect)
 
+        # Các tùy chọn
         options = [
-            {"text": "1. Continue (P)", "key": pygame.K_1},
-            {"text": "2. Back to Mode Menu", "key": pygame.K_2},
-            {"text": "3. Exit Game", "key": pygame.K_3}
+            {"text": "1. Continue (P)", "key": pygame.K_1, "color": (255, 255, 255)},
+            {"text": "2. Back to Mode Menu", "key": pygame.K_2, "color": (255, 200, 200)},
+            {"text": "3. Exit Game", "key": pygame.K_3, "color": (200, 200, 255)}
         ]
 
-        start_y = self.HEIGHT * 0.35
-        spacing = self.HEIGHT * 0.1
+        start_y = self.HEIGHT * 0.4
+        spacing = self.HEIGHT * 0.12
+        button_width = 400
+        button_height = 60
 
         for i, option in enumerate(options):
-            option_text = option_font.render(option["text"], True, "white")
-            option_rect = option_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing))
-            self.screen.blit(option_text, option_rect)
+            # Vẽ nút nền
+            button_rect = pygame.Rect(self.WIDTH_SCREEN // 2 - button_width // 2, 
+                                   start_y + i * spacing - button_height // 2, 
+                                   button_width, button_height)
+            pygame.draw.rect(self.screen, (50, 50, 50, 200), button_rect, 0, 10)
+            pygame.draw.rect(self.screen, option["color"], button_rect, 2, 10)
+
+            # Vẽ văn bản
+            option_text = option_font.render(option["text"], True, option["color"])
+            option_shadow = option_font.render(option["text"], True, (50, 50, 50))
+            text_rect = option_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing))
+            self.screen.blit(option_shadow, (text_rect.x + shadow_offset, text_rect.y + shadow_offset))
+            self.screen.blit(option_text, text_rect)
 
         pygame.display.flip()
 
