@@ -1,18 +1,22 @@
 import copy
+import csv  # Thêm thư viện CSV
 import heapq
+import logging
 import math
+import os
 import random
 from collections import deque
-import logging
-import pygame
+
+import matplotlib.pyplot as plt
 import numpy as np
+import pygame
+
 from board import boards
 from ghost import Ghost
 from logic import Pathfinder
 from player import Player
-import csv  # Thêm thư viện CSV
-import matplotlib.pyplot as plt 
-import os
+
+
 class Game:
     def __init__(self):
         pygame.init()
@@ -55,7 +59,7 @@ class Game:
         self.ghost_speeds = []
         self.ghosts = []
         self.startup_counter_ghost = 0
-        self.data_saved = False 
+        self.data_saved = False
         self.blinky_img = pygame.transform.scale(pygame.image.load("assets/ghost_images/red.png"), (45, 45))
         self.pinky_img = pygame.transform.scale(pygame.image.load("assets/ghost_images/pink.png"), (45, 45))
 
@@ -68,6 +72,7 @@ class Game:
 
         self.csv_file_path = os.path.join(os.path.dirname(__file__), "game_stats.csv")
         self.initialize_csv()
+
     def initialize_csv(self):
         """Initialize the CSV file with a header if it doesn't exist."""
         try:
@@ -170,6 +175,7 @@ class Game:
         for i, t in enumerate(self.genetic_times[:4]):
             genetic_time_text = self.font.render(f"{i+1}. {t:.2f}", True, "yellow")
             self.screen.blit(genetic_time_text, (self.WIDTH_SCREEN - 150, 500 + i * 20))
+
     def draw_board(self):
         num1 = (self.HEIGHT - 50) // 32
         num2 = self.WIDTH // 30
@@ -379,13 +385,12 @@ class Game:
                     target = (player_x, player_y)
                 else:
                     target = return_target
-            if(ghost.in_box):
-                target = (ghost.x_pos, ghost.y_pos - 100) 
+            if ghost.in_box:
+                target = (ghost.x_pos, ghost.y_pos - 100)
             targets.append(target)
-            
+
         return targets
 
-   
     def reset(self):
         """Reset game state without saving data."""
         self.powerup = False
@@ -412,6 +417,7 @@ class Game:
             self.ghosts.append(Ghost(450, 400, (self.player.x, self.player.y), self.ghost_speeds[0], self.blinky_img, 0, False, True, 0, self.level))
         if self.game_level >= 3:
             self.ghosts.append(Ghost(450, 400, (self.player.x, self.player.y), self.ghost_speeds[1], self.pinky_img, 1, False, True, 0, self.level))
+
     def run(self):
         run = True
         selected_mode = None
@@ -425,14 +431,7 @@ class Game:
                     if event.type == pygame.QUIT:
                         if self.start_time is not None:
                             self.game_duration = (pygame.time.get_ticks() - self.start_time) / 1000.0
-                            algorithm = {
-                                0: "Manual",
-                                1: "BFS",
-                                2: "A*",
-                                3: "Backtracking",
-                                4: "Genetic",
-                                5: "RTA*"
-                            }.get(self.game_mode, "Unknown")
+                            algorithm = {0: "Manual", 1: "BFS", 2: "A*", 3: "Backtracking", 4: "Genetic", 5: "RTA*"}.get(self.game_mode, "Unknown")
                             logging.info(f"Saving data on quit: Level={self.game_level}, Algorithm={algorithm}, Duration={self.game_duration:.2f}, Score={self.player.score}, Lives={self.player.lives}")
                             self.save_game_data(self.game_level, algorithm, self.game_duration, self.player.score, self.player.lives)
                         run = False
@@ -459,14 +458,7 @@ class Game:
                     if event.type == pygame.QUIT:
                         if self.start_time is not None:
                             self.game_duration = (pygame.time.get_ticks() - self.start_time) / 1000.0
-                            algorithm = {
-                                0: "Manual",
-                                1: "BFS",
-                                2: "A*",
-                                3: "Backtracking",
-                                4: "Genetic",
-                                5: "RTA*"
-                            }.get(self.game_mode, "Unknown")
+                            algorithm = {0: "Manual", 1: "BFS", 2: "A*", 3: "Backtracking", 4: "Genetic", 5: "RTA*"}.get(self.game_mode, "Unknown")
                             logging.info(f"Saving data on quit: Level={self.game_level}, Algorithm={algorithm}, Duration={self.game_duration:.2f}, Score={self.player.score}, Lives={self.player.lives}")
                             self.save_game_data(self.game_level, algorithm, self.game_duration, self.player.score, self.player.lives)
                         run = False
@@ -487,7 +479,7 @@ class Game:
                             self.paused = False
                             self.start_time = pygame.time.get_ticks()
                         elif event.key == pygame.K_4:
-                            selected_mode = self.run_rtastar
+                            selected_mode = self.run_RTA_star
                             self.menu = False
                             self.paused = False
                             self.start_time = pygame.time.get_ticks()
@@ -515,14 +507,7 @@ class Game:
                     if event.type == pygame.QUIT:
                         if self.start_time is not None:
                             self.game_duration = (pygame.time.get_ticks() - self.start_time) / 1000.0
-                            algorithm = {
-                                0: "Manual",
-                                1: "BFS",
-                                2: "A*",
-                                3: "Backtracking",
-                                4: "Genetic",
-                                5: "RTA*"
-                            }.get(self.game_mode, "Unknown")
+                            algorithm = {0: "Manual", 1: "BFS", 2: "A*", 3: "Backtracking", 4: "Genetic", 5: "RTA*"}.get(self.game_mode, "Unknown")
                             logging.info(f"Saving data on quit: Level={self.game_level}, Algorithm={algorithm}, Duration={self.game_duration:.2f}, Score={self.player.score}, Lives={self.player.lives}")
                             self.save_game_data(self.game_level, algorithm, self.game_duration, self.player.score, self.player.lives)
                         run = False
@@ -740,7 +725,7 @@ class Game:
         dots = self.find_dots()
         if not dots:
             return None, None
-        min_ghost_dist = float('inf') if not ghost_pos else min(self.logic.heuristic(current_pos, ghost) for ghost in ghost_pos)
+        min_ghost_dist = float("inf") if not ghost_pos else min(self.logic.heuristic(current_pos, ghost) for ghost in ghost_pos)
         if min_ghost_dist <= 3:
             safe_dot = None
             for dot in dots:
@@ -777,9 +762,7 @@ class Game:
                 possible_moves = []
                 for dx, dy in directions:
                     new_pos = (current_pos[0] + dy, current_pos[1] + dx)
-                    if (0 <= new_pos[0] < len(self.level) and 
-                        0 <= new_pos[1] < len(self.level[0]) and 
-                        self.level[new_pos[0]][new_pos[1]] < 3):
+                    if 0 <= new_pos[0] < len(self.level) and 0 <= new_pos[1] < len(self.level[0]) and self.level[new_pos[0]][new_pos[1]] < 3:
                         possible_moves.append(new_pos)
                 if possible_moves:
                     if current_direction == 0:
@@ -899,7 +882,7 @@ class Game:
 
             if moving and not self.game_won:
                 current_grid_pos = self.get_grid_pos(center_x, center_y)
-                if self.path_to_target and not self.is_path_safe(self.path_to_target[self.current_target_index:], ghost_pos, danger_radius=3):
+                if self.path_to_target and not self.is_path_safe(self.path_to_target[self.current_target_index :], ghost_pos, danger_radius=3):
                     self.path_to_target = None
                     self.current_target_index = 0
                 safe_dot, safe_point = self.find_dot_safe(current_grid_pos, ghost_pos)
@@ -962,9 +945,160 @@ class Game:
             self.draw_ghost_radii(ghost_radius=3)
             pygame.display.flip()
 
-    def run_rtastar(self):
+    # def run_rtastar(self):
+    #     run = True
+    #     self.game_mode = 5
+    #     moving = False
+    #     self.start_time = pygame.time.get_ticks()  # Thêm vào để chạy thử, xóa sau
+    #     self.game_level = 3  # Thêm vào để chạy thử, xóa đi
+
+    #     while run:
+    #         self.timer.tick(self.fps)
+    #         if self.paused:
+    #             self.draw_pause_menu()
+    #             for event in pygame.event.get():
+    #                 if event.type == pygame.QUIT:
+    #                     run = False
+    #                     return
+    #                 elif event.type == pygame.KEYDOWN:
+    #                     if event.key == pygame.K_p:
+    #                         self.paused = False
+    #                     elif event.key == pygame.K_1:
+    #                         self.paused = False
+    #                     elif event.key == pygame.K_2:
+    #                         self.reset()
+    #                         self.menu = True
+    #                         self.level_menu = True
+    #                         self.paused = False
+    #                         run = False
+    #                         return
+    #                     elif event.key == pygame.K_3:
+    #                         pygame.quit()
+    #                         return
+    #             pygame.display.flip()
+    #             continue
+
+    #         if not self.game_won and not self.game_over:
+    #             current_time = pygame.time.get_ticks()
+    #             self.game_duration = (current_time - self.start_time) / 1000.0
+
+    #         self.counter = (self.counter + 1) % 20
+    #         self.flicker = self.counter <= 3
+    #         if self.powerup:
+    #             self.power_counter += 1
+    #             if self.power_counter >= 600:
+    #                 self.powerup, self.power_counter = False, 0
+
+    #         if self.startup_counter < 30 and not self.game_over and not self.game_won:
+    #             moving = False
+    #             self.startup_counter += 1
+    #         else:
+    #             moving = True
+
+    #         if self.startup_counter_ghost < 60:
+    #             self.startup_counter_ghost += 1
+    #         else:
+    #             targets = self.get_targets()
+    #             for i, ghost in enumerate(self.ghosts):
+    #                 ghost.target = targets[i] if i < len(targets) else ""
+    #                 ghost.update_state(self.powerup, self.eaten_ghost, self.ghost_speeds[i], ghost.x_pos, ghost.y_pos)
+    #                 move_fn = ghost.move_clyde if ghost.in_box or ghost.dead else (ghost.move_blinky if i == 0 else ghost.move_pinky)
+    #                 if ghost.in_box:
+    #                     ghost.dead = False
+    #                 ghost.x_pos, ghost.y_pos, ghost.direction = move_fn()
+    #                 ghost.center_x = ghost.x_pos + 22
+    #                 ghost.center_y = ghost.y_pos + 22
+    #                 ghost.turns, ghost.in_box = ghost.check_collisions()
+
+    #         ghost_pos = self.predict_ghost_positions(self.ghosts, steps=4)
+
+    #         self.screen.fill("black")
+    #         self.draw_board()
+    #         self.draw_grid()
+    #         cx, cy = self.player.get_center()
+
+    #         self.game_won = all(1 not in row and 2 not in row for row in self.level)
+    #         if self.game_won:
+    #             if self.game_duration not in self.rtastar_times:
+    #                 self.rtastar_times.insert(0, self.game_duration)
+    #                 logging.info(f"RTA* completed Level {self.game_level} in {self.game_duration:.2f}s")
+    #                 self.save_game_data(self.game_level, "RTA*", self.game_duration, self.player.score, self.player.lives)
+    #         if self.player.lives <= 0:
+    #             self.game_over = True
+    #             moving = False
+    #             self.startup_counter = 0
+    #             if not self.data_saved:
+    #                 logging.info(f"RTA* game over at Level {self.game_level}")
+    #                 self.save_game_data(self.game_level, "RTA*", self.game_duration, self.player.score, self.player.lives)
+
+    #         self.player.draw(self.screen, self.counter)
+    #         self.draw_misc()
+    #         self.turns_allowed = self.check_position(cx, cy)
+
+    #         if moving and not self.game_won:
+    #             current_grid_pos = self.get_grid_pos(cx, cy)
+    #             if self.path_to_target and not self.is_path_safe(self.path_to_target[self.current_target_index :], ghost_pos, danger_radius=3):
+    #                 self.path_to_target = None
+    #                 self.current_target_index = 0
+    #             safe_dot, safe_point = self.find_dot_safe(current_grid_pos, ghost_pos)
+    #             if self.path_to_target is None or self.current_target_index >= len(self.path_to_target) or (self.path_to_target and self.path_to_target[0] != current_grid_pos):
+    #                 if safe_dot:
+    #                     # candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, [safe_dot], ghost_positions=ghost_pos, ghost_radius=5, depth_limit=10)
+    #                     candidate = self.logic.rta_star_realtime(current_grid_pos, safe_dot, ghost_positions=ghost_pos, ghost_radius=5)
+    #                 elif safe_point:
+    #                     # candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, [safe_point], ghost_positions=ghost_pos, ghost_radius=5, depth_limit=10)
+    #                     candidate = self.logic.rta_star_realtime(current_grid_pos, safe_point, ghost_positions=ghost_pos, ghost_radius=5)
+    #                 else:
+    #                     dots = self.find_dots()
+    #                     # candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, dots, ghost_positions=ghost_pos, ghost_radius=5, depth_limit=10) if dots else None
+    #                     candidate = self.logic.rta_star_realtime(current_grid_pos, dots, ghost_positions=ghost_pos, ghost_radius=5) if dots else None
+    #                 if candidate:
+    #                     self.path_to_target = candidate
+    #                     self.current_target_index = 1
+    #                 else:
+    #                     self.path_to_target = None
+    #             if self.path_to_target and self.current_target_index < len(self.path_to_target):
+    #                 next_grid_pos = self.path_to_target[self.current_target_index]
+    #                 if self.is_at_center(self.player.x, self.player.y, current_grid_pos):
+    #                     if current_grid_pos == next_grid_pos:
+    #                         self.current_target_index += 1
+    #                     else:
+    #                         self.player.direction = self.get_direction_from_path(current_grid_pos, next_grid_pos)
+    #                         if self.turns_allowed[self.player.direction]:
+    #                             self.player.move(self.turns_allowed)
+    #                 else:
+    #                     if self.turns_allowed[self.player.direction]:
+    #                         self.player.move(self.turns_allowed)
+
+    #         for ghost in self.ghosts:
+    #             ghost.draw()
+    #         self.powerup, self.power_counter = self.check_collisions()
+    #         if self.check_ghost_collisions():
+    #             moving = False
+    #             self.startup_counter = 0
+
+    #         for event in pygame.event.get():
+    #             if event.type == pygame.QUIT:
+    #                 run = False
+    #                 self.menu = True
+    #                 return
+    #             if event.type == pygame.KEYDOWN:
+    #                 if event.key == pygame.K_p:
+    #                     self.paused = True
+    #                 if event.key == pygame.K_SPACE and (self.game_over or self.game_won):
+    #                     self.reset()
+    #                     self.menu = True
+    #                     self.level_menu = True
+    #                     run = False
+    #                     return
+
+    #         self.draw_path()
+    #         self.draw_ghost_radii(ghost_radius=3)
+    #         pygame.display.flip()
+
+    def run_RTA_star(self):
         run = True
-        self.game_mode = 5
+        self.game_mode = 0
         moving = False
 
         while run:
@@ -997,12 +1131,19 @@ class Game:
                 current_time = pygame.time.get_ticks()
                 self.game_duration = (current_time - self.start_time) / 1000.0
 
-            self.counter = (self.counter + 1) % 20
-            self.flicker = (self.counter <= 3)
-            if self.powerup:
+            if self.counter < 19:
+                self.counter += 1
+                if self.counter > 3:
+                    self.flicker = False
+            else:
+                self.counter = 0
+                self.flicker = True
+
+            if self.powerup and self.power_counter < 600:
                 self.power_counter += 1
-                if self.power_counter >= 600:
-                    self.powerup, self.power_counter = False, 0
+            elif self.powerup and self.power_counter >= 600:
+                self.power_counter = 0
+                self.powerup = False
 
             if self.startup_counter < 30 and not self.game_over and not self.game_won:
                 moving = False
@@ -1017,77 +1158,74 @@ class Game:
                 for i, ghost in enumerate(self.ghosts):
                     ghost.target = targets[i] if i < len(targets) else ""
                     ghost.update_state(self.powerup, self.eaten_ghost, self.ghost_speeds[i], ghost.x_pos, ghost.y_pos)
-                    move_fn = ghost.move_clyde if ghost.in_box or ghost.dead else (
-                        ghost.move_blinky if i == 0 else ghost.move_pinky
-                    )
                     if ghost.in_box:
                         ghost.dead = False
-                    ghost.x_pos, ghost.y_pos, ghost.direction = move_fn()
+                        ghost.x_pos, ghost.y_pos, ghost.direction = ghost.move_clyde()
+                    else:
+                        ghost.x_pos, ghost.y_pos, ghost.direction = ghost.move_blinky() if i == 0 else ghost.move_pinky()
                     ghost.center_x = ghost.x_pos + 22
                     ghost.center_y = ghost.y_pos + 22
                     ghost.turns, ghost.in_box = ghost.check_collisions()
-
             ghost_pos = self.predict_ghost_positions(self.ghosts, steps=4)
-
             self.screen.fill("black")
             self.draw_board()
             self.draw_grid()
-            cx, cy = self.player.get_center()
+            center_x, center_y = self.player.get_center()
+            self.turns_allowed = self.check_position(center_x, center_y)
+            current_grid_pos = self.get_grid_pos(center_x, center_y)
 
+            # Kiểm tra điều kiện thắng
             self.game_won = all(1 not in row and 2 not in row for row in self.level)
-            if self.game_won:
-                if self.game_duration not in self.rtastar_times:
-                    self.rtastar_times.insert(0, self.game_duration)
-                    logging.info(f"RTA* completed Level {self.game_level} in {self.game_duration:.2f}s")
-                    self.save_game_data(self.game_level, "RTA*", self.game_duration, self.player.score, self.player.lives)
-            if self.player.lives <= 0:
-                self.game_over = True
-                moving = False
-                self.startup_counter = 0
-                if not self.data_saved:
-                    logging.info(f"RTA* game over at Level {self.game_level}")
-                    self.save_game_data(self.game_level, "RTA*", self.game_duration, self.player.score, self.player.lives)
+            if self.game_won and self.game_duration not in self.astar_times:
+                self.astar_times.insert(0, self.game_duration)
 
+            # Vẽ marker (tùy chọn)
+            pygame.draw.circle(self.screen, "black", (center_x, center_y), 20, 2)
             self.player.draw(self.screen, self.counter)
             self.draw_misc()
-            self.turns_allowed = self.check_position(cx, cy)
 
+            # Xác định mục tiêu dựa trên vị trí các dot an toàn (nếu có)
+            safe_dot, safe_point = self.find_dot_safe(current_grid_pos, ghost_pos)
+            if safe_dot:
+                goal = safe_dot
+            elif safe_point:
+                goal = safe_point
+            else:
+                dots = self.find_dots()
+                goal = dots[0] if dots else current_grid_pos
+
+            # Tính bước đi tiếp theo sử dụng RTA*: chỉ tính toán các trạng thái lân cận
+            next_grid_pos = self.logic.rta_star_realtime(current_grid_pos, goal, ghost_positions=ghost_pos)
+
+            # Vì RTA* tính 1 bước tại thời điểm hiện tại, chúng ta tạo "path" với current và next
+            if not self.path_to_target or self.path_to_target[0] != current_grid_pos:
+                self.path_to_target = [current_grid_pos, next_grid_pos]
+                self.current_target_index = 1
+
+            # Nếu ở giữa ô, cập nhật hướng dựa trên next_grid_pos
             if moving and not self.game_won:
-                current_grid_pos = self.get_grid_pos(cx, cy)
-                if self.path_to_target and not self.is_path_safe(self.path_to_target[self.current_target_index:], ghost_pos, danger_radius=3):
-                    self.path_to_target = None
-                    self.current_target_index = 0
-                safe_dot, safe_point = self.find_dot_safe(current_grid_pos, ghost_pos)
-                if self.path_to_target is None or self.current_target_index >= len(self.path_to_target) or (self.path_to_target and self.path_to_target[0] != current_grid_pos):
-                    if safe_dot:
-                        candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, [safe_dot], ghost_positions=ghost_pos, ghost_radius=5, depth_limit=10)
-                    elif safe_point:
-                        candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, [safe_point], ghost_positions=ghost_pos, ghost_radius=5, depth_limit=10)
+                if self.is_at_center(self.player.x, self.player.y, current_grid_pos):
+                    if current_grid_pos == next_grid_pos:
+                        self.current_target_index += 1
                     else:
-                        dots = self.find_dots()
-                        candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, dots, ghost_positions=ghost_pos, ghost_radius=5, depth_limit=10) if dots else None
-                    if candidate:
-                        self.path_to_target = candidate
-                        self.current_target_index = 1
-                    else:
-                        self.path_to_target = None
-                if self.path_to_target and self.current_target_index < len(self.path_to_target):
-                    next_grid_pos = self.path_to_target[self.current_target_index]
-                    if self.is_at_center(self.player.x, self.player.y, current_grid_pos):
-                        if current_grid_pos == next_grid_pos:
-                            self.current_target_index += 1
-                        else:
-                            self.player.direction = self.get_direction_from_path(current_grid_pos, next_grid_pos)
-                            if self.turns_allowed[self.player.direction]:
-                                self.player.move(self.turns_allowed)
-                    else:
+                        self.player.direction = self.get_direction_from_path(current_grid_pos, next_grid_pos)
                         if self.turns_allowed[self.player.direction]:
                             self.player.move(self.turns_allowed)
+                else:
+                    if self.turns_allowed[self.player.direction]:
+                        self.player.move(self.turns_allowed)
 
             for ghost in self.ghosts:
                 ghost.draw()
+            for ghost in self.ghosts:
+                ghost.target = ()
+
             self.powerup, self.power_counter = self.check_collisions()
             if self.check_ghost_collisions():
+                moving = False
+                self.startup_counter = 0
+            if self.player.lives <= 0:
+                self.game_over = True
                 moving = False
                 self.startup_counter = 0
 
@@ -1109,6 +1247,7 @@ class Game:
             self.draw_path()
             self.draw_ghost_radii(ghost_radius=3)
             pygame.display.flip()
+
     def run_BFS(self):
         run = True
         self.game_mode = 1
@@ -1264,7 +1403,6 @@ class Game:
         self.game_mode = 3
         moving = False
         depth_limit = 50
-
         while run:
             self.timer.tick(self.fps)
             if self.paused:
@@ -1295,7 +1433,7 @@ class Game:
                 self.game_duration = (current_time - self.start_time) / 1000.0
 
             self.counter = (self.counter + 1) % 20
-            self.flicker = (self.counter <= 3)
+            self.flicker = self.counter <= 3
             if self.powerup:
                 self.power_counter += 1
                 if self.power_counter >= 600:
@@ -1365,11 +1503,7 @@ class Game:
                     else:
                         if self.turns_allowed[self.player.direction]:
                             self.player.move(self.turns_allowed)
-                needs_new = (
-                    not self.path_to_target or
-                    self.current_target_index >= len(self.path_to_target) or
-                    (self.path_to_target and self.path_to_target[0] != grid)
-                )
+                needs_new = not self.path_to_target or self.current_target_index >= len(self.path_to_target) or (self.path_to_target and self.path_to_target[0] != grid)
                 if needs_new:
                     dots = self.find_dots()
                     if dots:
@@ -1460,7 +1594,7 @@ class Game:
                 self.game_duration = (current_time - self.start_time) / 1000.0
 
             self.counter = (self.counter + 1) % 20
-            self.flicker = (self.counter <= 3)
+            self.flicker = self.counter <= 3
             if self.powerup:
                 self.power_counter += 1
                 if self.power_counter >= 600:
@@ -1479,9 +1613,7 @@ class Game:
                 for i, ghost in enumerate(self.ghosts):
                     ghost.target = targets[i] if i < len(targets) else ""
                     ghost.update_state(self.powerup, self.eaten_ghost, self.ghost_speeds[i], ghost.x_pos, ghost.y_pos)
-                    move_fn = ghost.move_clyde if ghost.in_box or ghost.dead else (
-                        ghost.move_blinky if i == 0 else ghost.move_pinky
-                    )
+                    move_fn = ghost.move_clyde if ghost.in_box or ghost.dead else (ghost.move_blinky if i == 0 else ghost.move_pinky)
                     if ghost.in_box:
                         ghost.dead = False
                     ghost.x_pos, ghost.y_pos, ghost.direction = move_fn()
@@ -1515,7 +1647,7 @@ class Game:
 
             if moving and not self.game_won and not self.game_over:
                 grid = self.get_grid_pos(cx, cy)
-                if self.path_to_target and not self.is_path_safe(self.path_to_target[self.current_target_index:], ghost_pos, danger_radius=3):
+                if self.path_to_target and not self.is_path_safe(self.path_to_target[self.current_target_index :], ghost_pos, danger_radius=3):
                     self.path_to_target = None
                     self.current_target_index = 0
                 if self.path_to_target and self.current_target_index < len(self.path_to_target):
@@ -1538,13 +1670,7 @@ class Game:
                     safe_dot, safe_point = self.find_dot_safe(grid, ghost_pos)
                     target = safe_dot if safe_dot else safe_point
                     if target:
-                        path = self.logic.genetic(
-                            start=grid,
-                            goals=[target],
-                            ghost_positions=ghost_pos,
-                            max_generations=150,
-                            population_size=50
-                        )
+                        path = self.logic.genetic(start=grid, goals=[target], ghost_positions=ghost_pos, max_generations=150, population_size=50)
                         if path and len(path) > 1 and self.is_path_safe(path, ghost_pos, danger_radius=3):
                             self.path_to_target = path
                             self.current_target_index = 1
@@ -1580,6 +1706,7 @@ class Game:
             self.draw_path()
             self.draw_ghost_radii(ghost_radius=3)
             pygame.display.flip()
+
     def draw_level_menu(self):
         """
         Hiển thị menu chọn level với giao diện đẹp hơn.
@@ -1603,11 +1730,7 @@ class Game:
         self.screen.blit(title_text, title_rect)
 
         # Các level
-        levels = [
-            {"text": "1. Level 1: No Ghosts", "key": pygame.K_1, "color": (255, 255, 255)},
-            {"text": "2. Level 2: 1 Ghost", "key": pygame.K_2, "color": (255, 200, 200)},
-            {"text": "3. Level 3: 2 Ghosts", "key": pygame.K_3, "color": (200, 200, 255)}
-        ]
+        levels = [{"text": "1. Level 1: No Ghosts", "key": pygame.K_1, "color": (255, 255, 255)}, {"text": "2. Level 2: 1 Ghost", "key": pygame.K_2, "color": (255, 200, 200)}, {"text": "3. Level 3: 2 Ghosts", "key": pygame.K_3, "color": (200, 200, 255)}]
 
         start_y = self.HEIGHT * 0.4
         spacing = self.HEIGHT * 0.12
@@ -1616,9 +1739,7 @@ class Game:
 
         for i, level in enumerate(levels):
             # Vẽ nút nền
-            button_rect = pygame.Rect(self.WIDTH_SCREEN // 2 - button_width // 2, 
-                                   start_y + i * spacing - button_height // 2, 
-                                   button_width, button_height)
+            button_rect = pygame.Rect(self.WIDTH_SCREEN // 2 - button_width // 2, start_y + i * spacing - button_height // 2, button_width, button_height)
             pygame.draw.rect(self.screen, (50, 50, 50, 200), button_rect, 0, 10)
             pygame.draw.rect(self.screen, level["color"], button_rect, 2, 10)
 
@@ -1630,6 +1751,7 @@ class Game:
             self.screen.blit(level_text, text_rect)
 
         pygame.display.flip()
+
     def show_statistics(self):
         """Hiển thị thống kê từ file CSV, so sánh các thuật toán theo level."""
         try:
@@ -1677,7 +1799,7 @@ class Game:
         plt.ylabel("Duration (s)")
         for bar in bars:
             yval = bar.get_height()
-            plt.text(bar.get_x() + bar.get_width()/2, yval, f"{yval:.2f}", ha="center", va="bottom")
+            plt.text(bar.get_x() + bar.get_width() / 2, yval, f"{yval:.2f}", ha="center", va="bottom")
 
         # Plot Score
         plt.subplot(3, 1, 2)
@@ -1687,7 +1809,7 @@ class Game:
         plt.ylabel("Score")
         for bar in bars:
             yval = bar.get_height()
-            plt.text(bar.get_x() + bar.get_width()/2, yval, f"{yval:.0f}", ha="center", va="bottom")
+            plt.text(bar.get_x() + bar.get_width() / 2, yval, f"{yval:.0f}", ha="center", va="bottom")
 
         # Plot Lives
         plt.subplot(3, 1, 3)
@@ -1697,11 +1819,12 @@ class Game:
         plt.ylabel("Lives")
         for bar in bars:
             yval = bar.get_height()
-            plt.text(bar.get_x() + bar.get_width()/2, yval, f"{yval:.1f}", ha="center", va="bottom")
+            plt.text(bar.get_x() + bar.get_width() / 2, yval, f"{yval:.1f}", ha="center", va="bottom")
 
         plt.tight_layout()
         plt.show()
         logging.info(f"Displayed statistics for Level {self.game_level}: {algorithms}")
+
     def draw_menu(self):
         """
         Hiển thị menu chính với giao diện cải tiến.
@@ -1727,13 +1850,13 @@ class Game:
 
         # Các chế độ chơi
         modes = [
-        {"text": "1. Manual Control", "key": pygame.K_1, "desc": "Use arrow keys to play", "color": (255, 255, 255)},
-        {"text": "2. BFS Algorithm", "key": pygame.K_2, "desc": "AI with Breadth-First Search", "color": (200, 255, 200)},
-        {"text": "3. A* Algorithm", "key": pygame.K_3, "desc": "AI with A* Search", "color": (200, 200, 255)},
-        {"text": "4. Real Time A*", "key": pygame.K_4, "desc": "AI with Real Time A*", "color": (255, 200, 255)},
-        {"text": "5. Backtracking", "key": pygame.K_5, "desc": "AI with Backtracking", "color": (255, 200, 200)},
-        {"text": "6. Genetic Algorithm", "key": pygame.K_6, "desc": "AI with Genetic Algorithm", "color": (255, 200, 255)},
-        {"text": "7. Statistics", "key": pygame.K_7, "desc": "View game statistics", "color": (255, 255, 0)}  # Thêm nút thống kê
+            {"text": "1. Manual Control", "key": pygame.K_1, "desc": "Use arrow keys to play", "color": (255, 255, 255)},
+            {"text": "2. BFS Algorithm", "key": pygame.K_2, "desc": "AI with Breadth-First Search", "color": (200, 255, 200)},
+            {"text": "3. A* Algorithm", "key": pygame.K_3, "desc": "AI with A* Search", "color": (200, 200, 255)},
+            {"text": "4. Real Time A*", "key": pygame.K_4, "desc": "AI with Real Time A*", "color": (255, 200, 255)},
+            {"text": "5. Backtracking", "key": pygame.K_5, "desc": "AI with Backtracking", "color": (255, 200, 200)},
+            {"text": "6. Genetic Algorithm", "key": pygame.K_6, "desc": "AI with Genetic Algorithm", "color": (255, 200, 255)},
+            {"text": "7. Statistics", "key": pygame.K_7, "desc": "View game statistics", "color": (255, 255, 0)},  # Thêm nút thống kê
         ]
 
         start_y = self.HEIGHT * 0.2
@@ -1743,9 +1866,7 @@ class Game:
 
         for i, mode in enumerate(modes):
             # Vẽ nút nền
-            button_rect = pygame.Rect(self.WIDTH_SCREEN // 2 - button_width // 2, 
-                                   start_y + i * spacing - button_height // 2, 
-                                   button_width, button_height)
+            button_rect = pygame.Rect(self.WIDTH_SCREEN // 2 - button_width // 2, start_y + i * spacing - button_height // 2, button_width, button_height)
             pygame.draw.rect(self.screen, (50, 50, 50, 200), button_rect, 0, 10)
             pygame.draw.rect(self.screen, mode["color"], button_rect, 2, 10)
 
@@ -1785,11 +1906,7 @@ class Game:
         self.screen.blit(title_text, title_rect)
 
         # Các tùy chọn
-        options = [
-            {"text": "1. Continue (P)", "key": pygame.K_1, "color": (255, 255, 255)},
-            {"text": "2. Back to Mode Menu", "key": pygame.K_2, "color": (255, 200, 200)},
-            {"text": "3. Exit Game", "key": pygame.K_3, "color": (200, 200, 255)}
-        ]
+        options = [{"text": "1. Continue (P)", "key": pygame.K_1, "color": (255, 255, 255)}, {"text": "2. Back to Mode Menu", "key": pygame.K_2, "color": (255, 200, 200)}, {"text": "3. Exit Game", "key": pygame.K_3, "color": (200, 200, 255)}]
 
         start_y = self.HEIGHT * 0.4
         spacing = self.HEIGHT * 0.12
@@ -1798,9 +1915,7 @@ class Game:
 
         for i, option in enumerate(options):
             # Vẽ nút nền
-            button_rect = pygame.Rect(self.WIDTH_SCREEN // 2 - button_width // 2, 
-                                   start_y + i * spacing - button_height // 2, 
-                                   button_width, button_height)
+            button_rect = pygame.Rect(self.WIDTH_SCREEN // 2 - button_width // 2, start_y + i * spacing - button_height // 2, button_width, button_height)
             pygame.draw.rect(self.screen, (50, 50, 50, 200), button_rect, 0, 10)
             pygame.draw.rect(self.screen, option["color"], button_rect, 2, 10)
 
@@ -1816,4 +1931,6 @@ class Game:
 
 if __name__ == "__main__":
     game = Game()
+    # game.game_level = 3
+    # game.reset()
     game.run()
