@@ -15,6 +15,95 @@ from board import boards
 from ghost import Ghost
 from logic import Pathfinder
 from player import Player
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import gymnasium as gym
+from collections import deque
+
+# Thêm lớp Network và Agent cho DCQL
+class Network(nn.Module):
+    def __init__(self, action_size):
+        super(Network, self).__init__()
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=8, stride=4)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
+        self.fc1 = nn.Linear(64 * 7 * 7, 512)
+        self.fc2 = nn.Linear(512, action_size)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x = x.permute(0, 3, 1, 2) / 255.0  # Chuyển [H, W, C] thành [C, H, W] và chuẩn hóa
+        x = self.relu(self.conv1(x))
+        x = self.relu(self.conv2(x))
+        x = self.relu(self.conv3(x))
+        x = x.view(x.size(0), -1)
+        x = self.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
+class Agent:
+    def __init__(self, action_size):
+        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+        self.action_size = action_size
+        self.local_qnetwork = Network(action_size).to(self.device)
+        self.target_qnetwork = Network(action_size).to(self.device)
+        self.optimizer = optim.Adam(self.local_qnetwork.parameters(), lr=5e-4)
+        self.memory = deque(maxlen=10000)
+        self.minibatch_size = 64
+        self.discount_factor = 0.99
+
+    def step(self, state, action, reward, next_state, done):
+        self.memory.append((state, action, reward, next_state, done))
+        if len(self.memory) > self.minibatch_size:
+            experiences = random.sample(self.memory, k=self.minibatch_size)
+            self.learn(experiences)
+
+    def act(self, state, epsilon=0.0):
+        state = torch.from_numpy(np.array(state)).float().unsqueeze(0).to(self.device)
+        self.local_qnetwork.eval()
+        with torch.no_grad():
+            action_values = self.local_qnetwork(state)
+        self.local_qnetwork.train()
+        if random.random() > epsilon:
+            return np.argmax(action_values.cpu().data.numpy())
+        return random.choice(np.arange(self.action_size))
+
+    def learn(self, experiences):
+        states, actions, rewards, next_states, dones = zip(*experiences)
+        states = torch.from_numpy(np.array(states)).float().to(self.device)
+        actions = torch.from_numpy(np.array(actions)).long().unsqueeze(1).to(self.device)
+        rewards = torch.from_numpy(np.array(rewards)).float().unsqueeze(1).to(self.device)
+        next_states = torch.from_numpy(np.array(next_states)).float().to(self.device)
+        dones = torch.from_numpy(np.array(dones).astype(np.uint8)).float().unsqueeze(1).to(self.device)
+
+        Q_targets_next = self.target_qnetwork(next_states).detach().max(1)[0].unsqueeze(1)
+        Q_targets = rewards + (self.discount_factor * Q_targets_next * (1 - dones))
+        Q_expected = self.local_qnetwork(states).gather(1, actions)
+        loss = nn.MSELoss()(Q_expected, Q_targets)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+    def update_target_network(self):
+        self.target_qnetwork.load_state_dict(self.local_qnetwork.state_dict())
+
+    def save_model(self, model_path):
+        try:
+            torch.save(self.local_qnetwork.state_dict(), model_path)
+            logging.info(f"Saved model to {model_path}")
+        except Exception as e:
+            logging.error(f"Failed to save model to {model_path}: {e}")
+
+    def load_model(self, model_path):
+        try:
+            self.local_qnetwork.load_state_dict(torch.load(model_path))
+            self.target_qnetwork.load_state_dict(torch.load(model_path))
+            self.local_qnetwork.eval()
+            self.target_qnetwork.eval()
+            logging.info(f"Loaded model from {model_path}")
+        except Exception as e:
+            logging.error(f"Failed to load model from {model_path}: {e}")
 
 
 class Game:
@@ -72,7 +161,25 @@ class Game:
 
         self.csv_file_path = os.path.join(os.path.dirname(__file__), "game_stats.csv")
         self.initialize_csv()
-
+        self.dcql_times = []  # Thêm để lưu thời gian DCQL
+        # Khởi tạo môi trường DCQL
+        self.env = None
+        self.dcql_agent = None
+        if gym is not None and torch is not None:
+            try:
+                self.env = gym.make('ALE/MsPacman-v5', full_action_space=False, render_mode='rgb_array')
+                self.dcql_agent = Agent(action_size=self.env.action_space.n)
+                logging.info("Successfully initialized DCQL environment with ALE/MsPacman-v5.")
+                if os.path.exists("dcql_model_episode_1000.pth"):
+                    self.dcql_agent.load_model("dcql_model_episode_1000.pth")
+            except Exception as e:
+                logging.error(f"Failed to initialize ALE/MsPacman-v5: {e}")
+                self.env = None
+                self.dcql_agent = None
+                print("Warning: DCQL mode is unavailable due to environment setup issues. Other modes are still accessible.")
+        else:
+            logging.warning("Gymnasium or PyTorch not installed. DCQL mode will be unavailable.")
+            print("Warning: DCQL mode is unavailable. Install gymnasium and torch to enable it.")
     def initialize_csv(self):
         """Initialize the CSV file with a header if it doesn't exist."""
         try:
@@ -175,6 +282,13 @@ class Game:
         for i, t in enumerate(self.genetic_times[:4]):
             genetic_time_text = self.font.render(f"{i+1}. {t:.2f}", True, "yellow")
             self.screen.blit(genetic_time_text, (self.WIDTH_SCREEN - 150, 500 + i * 20))
+
+        # DCQL Times
+        dcql_title = self.font.render("DCQL:", True, "yellow")
+        self.screen.blit(dcql_title, (self.WIDTH_SCREEN - 150, 580))
+        for i, t in enumerate(self.dcql_times[:4]):
+            dcql_time_text = self.font.render(f"{i+1}. {t:.2f}", True, "yellow")
+            self.screen.blit(dcql_time_text, (self.WIDTH_SCREEN - 150, 600 + i * 20))
 
     def draw_board(self):
         num1 = (self.HEIGHT - 50) // 32
@@ -417,7 +531,216 @@ class Game:
             self.ghosts.append(Ghost(450, 400, (self.player.x, self.player.y), self.ghost_speeds[0], self.blinky_img, 0, False, True, 0, self.level))
         if self.game_level >= 3:
             self.ghosts.append(Ghost(450, 400, (self.player.x, self.player.y), self.ghost_speeds[1], self.pinky_img, 1, False, True, 0, self.level))
+    def run_deep_convolutional_q_learning(self):
+        if self.env is None or self.dcql_agent is None:
+            logging.error("Gymnasium or PyTorch not available, cannot run DCQL.")
+            self.menu = True
+            self.level_menu = True
+            return
 
+        run = True
+        self.game_mode = 6
+        moving = False
+        epsilon = 1.0
+        epsilon_min = 0.01
+        epsilon_decay = 0.995
+        episodes = 1000
+        max_steps = 1000
+        update_target_frequency = 1000
+        save_frequency = 100
+        step_count = 0
+
+        for episode in range(episodes):
+            state, info = self.env.reset()
+            self.player.x = 450
+            self.player.y = 663
+            self.player.direction = 0
+            self.player.score = info.get('score', 0)
+            self.player.lives = info.get('lives', 3)
+            self.level = copy.deepcopy(boards)
+            self.powerup = False
+            self.power_counter = 0
+            self.startup_counter = 0
+            self.game_over = False
+            self.game_won = False
+            self.start_time = pygame.time.get_ticks()
+            self.data_saved = False
+            episode_steps = 0
+
+            while not self.game_over and episode_steps < max_steps:
+                self.timer.tick(self.fps)
+                if self.paused:
+                    self.draw_pause_menu()
+                    for event in pygame.event.get():
+                        if event.type == pygame.QUIT:
+                            run = False
+                            return
+                        elif event.type == pygame.KEYDOWN:
+                            if event.key == pygame.K_p:
+                                self.paused = False
+                            elif event.key == pygame.K_1:
+                                self.paused = False
+                            elif event.key == pygame.K_2:
+                                self.reset()
+                                self.menu = True
+                                self.level_menu = True
+                                self.paused = False
+                                run = False
+                                return
+                            elif event.key == pygame.K_3:
+                                pygame.quit()
+                                return
+                    pygame.display.flip()
+                    continue
+
+                if not self.game_won:
+                    current_time = pygame.time.get_ticks()
+                    self.game_duration = (current_time - self.start_time) / 1000.0
+
+                if self.counter < 19:
+                    self.counter += 1
+                    if self.counter > 3:
+                        self.flicker = False
+                else:
+                    self.counter = 0
+                    self.flicker = True
+
+                if self.powerup and self.power_counter < 600:
+                    self.power_counter += 1
+                elif self.powerup and self.power_counter >= 600:
+                    self.power_counter = 0
+                    self.powerup = False
+
+                if self.startup_counter < 30 and not self.game_over and not self.game_won:
+                    moving = False
+                    self.startup_counter += 1
+                else:
+                    moving = True
+
+                if self.startup_counter_ghost < 60:
+                    self.startup_counter_ghost += 1
+                else:
+                    targets = self.get_targets()
+                    for i, ghost in enumerate(self.ghosts):
+                        ghost.target = targets[i] if i < len(targets) else ""
+                        ghost.update_state(self.powerup, self.eaten_ghost, self.ghost_speeds[i], ghost.x_pos, ghost.y_pos)
+                        if ghost.in_box:
+                            ghost.dead = False
+                            ghost.x_pos, ghost.y_pos, ghost.direction = ghost.move_clyde()
+                        else:
+                            ghost.x_pos, ghost.y_pos, ghost.direction = ghost.move_blinky() if i == 0 else ghost.move_pinky()
+                        ghost.center_x = ghost.x_pos + 22
+                        ghost.center_y = ghost.y_pos + 22
+                        ghost.turns, ghost.in_box = ghost.check_collisions()
+
+                self.screen.fill("black")
+                self.draw_board()
+                center_x, center_y = self.player.get_center()
+                self.turns_allowed = self.check_position(center_x, center_y)
+
+                action = self.dcql_agent.act(state, epsilon)
+                next_state, reward, done, truncated, info = self.env.step(action)
+                self.dcql_agent.step(state, action, reward, next_state, done or truncated)
+                state = next_state
+                step_count += 1
+                episode_steps += 1
+
+                new_score = info.get('score', self.player.score)
+                new_lives = info.get('lives', self.player.lives)
+
+                if new_score > self.player.score:
+                    self.player.score = new_score
+                    num1 = (self.HEIGHT - 50) // 32
+                    num2 = self.WIDTH // 30
+                    grid_x = center_x // num2
+                    grid_y = center_y // num1
+                    if 0 <= grid_y < len(self.level) and 0 <= grid_x < len(self.level[0]):
+                        if self.level[grid_y][grid_x] == 1:
+                            self.level[grid_y][grid_x] = 0
+                        elif self.level[grid_y][grid_x] == 2:
+                            self.level[grid_y][grid_x] = 0
+                            self.powerup = True
+                            self.power_counter = 0
+
+                if new_lives < self.player.lives:
+                    self.player.lives = new_lives
+                    self.startup_counter = 0
+                    self.player.x = 450
+                    self.player.y = 663
+                    self.player.direction = 0
+                    self.powerup = False
+                    self.power_counter = 0
+
+                action_to_direction = {0: None, 1: 2, 2: 0, 3: 1, 4: 3}
+                if moving and not self.game_won:
+                    direction = action_to_direction.get(action)
+                    if direction is not None and self.turns_allowed[direction]:
+                        self.player.direction = direction
+                        self.player.move(self.turns_allowed)
+
+                self.game_won = all(1 not in row and 2 not in row for row in self.level)
+                if self.game_won:
+                    if self.game_duration not in self.dcql_times:
+                        self.dcql_times.insert(0, self.game_duration)
+                        logging.info(f"DCQL completed Level {self.game_level} in {self.game_duration:.2f}s")
+                        self.save_game_data(self.game_level, "DCQL", self.game_duration, self.player.score, self.player.lives)
+
+                if self.player.lives <= 0 or done or truncated:
+                    self.game_over = True
+                    moving = False
+                    self.startup_counter = 0
+                    if not self.data_saved:
+                        logging.info(f"DCQL game over at Level {self.game_level}")
+                        self.save_game_data(self.game_level, "DCQL", self.game_duration, self.player.score, self.player.lives)
+
+                self.player.draw(self.screen, self.counter)
+                self.draw_misc()
+
+                for ghost in self.ghosts:
+                    ghost.draw()
+                for ghost in self.ghosts:
+                    ghost.target = ()
+
+                self.powerup, self.power_counter = self.check_collisions()
+                if self.check_ghost_collisions():
+                    moving = False
+                    self.startup_counter = 0
+
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        run = False
+                        self.menu = True
+                        return
+                    if event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_p:
+                            self.paused = True
+                        if event.key == pygame.K_SPACE and (self.game_over or self.game_won):
+                            self.reset()
+                            self.menu = True
+                            self.level_menu = True
+                            run = False
+                            return
+
+                self.draw_ghost_radii(ghost_radius=3)
+                pygame.display.flip()
+
+                if step_count % update_target_frequency == 0:
+                    self.dcql_agent.update_target_network()
+
+                if episode % save_frequency == 0 and episode > 0:
+                    self.dcql_agent.save_model(f"dcql_model_episode_{episode}.pth")
+
+                if done or truncated or self.game_over or self.game_won:
+                    break
+
+            epsilon = max(epsilon_min, epsilon_decay * epsilon)
+            logging.info(f"Episode {episode + 1}/{episodes} completed. Epsilon: {epsilon:.3f}, Score: {self.player.score}, Lives: {self.player.lives}")
+
+        self.dcql_agent.save_model("dcql_model_episode_1000.pth")
+        self.menu = True
+        self.level_menu = True
+
+# Cập nhật run để thêm tùy chọn DCQL
     def run(self):
         run = True
         selected_mode = None
@@ -431,7 +754,7 @@ class Game:
                     if event.type == pygame.QUIT:
                         if self.start_time is not None:
                             self.game_duration = (pygame.time.get_ticks() - self.start_time) / 1000.0
-                            algorithm = {0: "Manual", 1: "BFS", 2: "A*", 3: "Backtracking", 4: "Genetic", 5: "RTA*"}.get(self.game_mode, "Unknown")
+                            algorithm = {0: "Manual", 1: "BFS", 2: "A*", 3: "Backtracking", 4: "Genetic", 5: "RTA*", 6: "DCQL"}.get(self.game_mode, "Unknown")
                             logging.info(f"Saving data on quit: Level={self.game_level}, Algorithm={algorithm}, Duration={self.game_duration:.2f}, Score={self.player.score}, Lives={self.player.lives}")
                             self.save_game_data(self.game_level, algorithm, self.game_duration, self.player.score, self.player.lives)
                         run = False
@@ -458,7 +781,7 @@ class Game:
                     if event.type == pygame.QUIT:
                         if self.start_time is not None:
                             self.game_duration = (pygame.time.get_ticks() - self.start_time) / 1000.0
-                            algorithm = {0: "Manual", 1: "BFS", 2: "A*", 3: "Backtracking", 4: "Genetic", 5: "RTA*"}.get(self.game_mode, "Unknown")
+                            algorithm = {0: "Manual", 1: "BFS", 2: "A*", 3: "Backtracking", 4: "Genetic", 5: "RTA*", 6: "DCQL"}.get(self.game_mode, "Unknown")
                             logging.info(f"Saving data on quit: Level={self.game_level}, Algorithm={algorithm}, Duration={self.game_duration:.2f}, Score={self.player.score}, Lives={self.player.lives}")
                             self.save_game_data(self.game_level, algorithm, self.game_duration, self.player.score, self.player.lives)
                         run = False
@@ -494,6 +817,11 @@ class Game:
                             self.paused = False
                             self.start_time = pygame.time.get_ticks()
                         elif event.key == pygame.K_7:
+                            selected_mode = self.run_deep_convolutional_q_learning
+                            self.menu = False
+                            self.paused = False
+                            self.start_time = pygame.time.get_ticks()
+                        elif event.key == pygame.K_8:
                             self.show_statistics()
 
             else:
@@ -507,7 +835,7 @@ class Game:
                     if event.type == pygame.QUIT:
                         if self.start_time is not None:
                             self.game_duration = (pygame.time.get_ticks() - self.start_time) / 1000.0
-                            algorithm = {0: "Manual", 1: "BFS", 2: "A*", 3: "Backtracking", 4: "Genetic", 5: "RTA*"}.get(self.game_mode, "Unknown")
+                            algorithm = {0: "Manual", 1: "BFS", 2: "A*", 3: "Backtracking", 4: "Genetic", 5: "RTA*", 6: "DCQL"}.get(self.game_mode, "Unknown")
                             logging.info(f"Saving data on quit: Level={self.game_level}, Algorithm={algorithm}, Duration={self.game_duration:.2f}, Score={self.player.score}, Lives={self.player.lives}")
                             self.save_game_data(self.game_level, algorithm, self.game_duration, self.player.score, self.player.lives)
                         run = False
@@ -520,6 +848,7 @@ class Game:
 
             pygame.display.flip()
         pygame.quit()
+    
 
     def run_manual(self):
         run = True
@@ -1098,7 +1427,7 @@ class Game:
 
     def run_RTA_star(self):
         run = True
-        self.game_mode = 0
+        self.game_mode = 5
         moving = False
 
         while run:
@@ -1753,81 +2082,108 @@ class Game:
         pygame.display.flip()
 
     def show_statistics(self):
-        """Hiển thị thống kê từ file CSV, so sánh các thuật toán theo level."""
+        """Hiển thị thống kê từ file CSV trên màn hình, so sánh các thuật toán theo level với thời gian ở millisecond."""
         try:
             with open(self.csv_file_path, mode="r") as file:
                 reader = csv.reader(file)
-                header = next(reader)  # Bỏ qua dòng tiêu đề
-                data = list(reader)
+                header = next(reader, None)  # Bỏ qua dòng tiêu đề
+                if header is None:
+                    print("CSV file is empty.")
+                    logging.warning(f"CSV file {self.csv_file_path} is empty.")
+                    return
+                data = []
+                for i, row in enumerate(reader):
+                    # Bỏ qua dòng trống hoặc không đủ cột
+                    if len(row) < 5:
+                        logging.warning(f"Skipping invalid row {i+2} in CSV: {row}")
+                        continue
+                    # Kiểm tra row[0] có phải số nguyên hợp lệ
+                    try:
+                        int(row[0])
+                    except ValueError:
+                        logging.warning(f"Skipping row {i+2} with invalid level: {row}")
+                        continue
+                    # Kiểm tra Duration, Score, Lives có hợp lệ
+                    try:
+                        float(row[2])  # Duration
+                        int(row[3])    # Score
+                        int(row[4])    # Lives
+                    except ValueError:
+                        logging.warning(f"Skipping row {i+2} with invalid data: {row}")
+                        continue
+                    data.append(row)
         except FileNotFoundError:
             print("No statistics available.")
             logging.warning(f"CSV file {self.csv_file_path} not found.")
             return
 
-        # Filter data for the current level
+        # Lọc dữ liệu cho level hiện tại
         level_data = [row for row in data if int(row[0]) == self.game_level]
         if not level_data:
             print(f"No statistics available for Level {self.game_level}.")
             logging.warning(f"No data found for Level {self.game_level}.")
             return
 
-        # Group data by algorithm
-        algorithms = list(set(row[1] for row in level_data))  # Get unique algorithms
+        # Nhóm dữ liệu theo thuật toán
+        algorithms = sorted(list(set(row[1] for row in level_data)))  # Sắp xếp để nhất quán
         durations = {algo: [] for algo in algorithms}
         scores = {algo: [] for algo in algorithms}
         lives = {algo: [] for algo in algorithms}
 
         for row in level_data:
             algo = row[1]
-            durations[algo].append(float(row[2]))
+            durations[algo].append(float(row[2]) * 1000)  # Chuyển sang millisecond
             scores[algo].append(int(row[3]))
             lives[algo].append(int(row[4]))
 
-        # Calculate average metrics
+        # Tính giá trị trung bình
         avg_durations = [np.mean(durations[algo]) if durations[algo] else 0 for algo in algorithms]
         avg_scores = [np.mean(scores[algo]) if scores[algo] else 0 for algo in algorithms]
         avg_lives = [np.mean(lives[algo]) if lives[algo] else 0 for algo in algorithms]
 
-        # Create bar chart for comparison
-        plt.figure(figsize=(12, 8))
+        # Tạo biểu đồ so sánh
+        plt.figure(figsize=(10, 8))  # Kích thước gọn gàng
 
-        # Plot Duration
+        # Biểu đồ Duration (ms)
         plt.subplot(3, 1, 1)
-        bars = plt.bar(algorithms, avg_durations, color="blue", alpha=0.7)
-        plt.title(f"Average Duration by Algorithm (Level {self.game_level})")
-        plt.xlabel("Algorithm")
-        plt.ylabel("Duration (s)")
+        bars = plt.bar(algorithms, avg_durations, color="blue", alpha=0.7, width=0.3)
+        plt.title(f"Average Duration (ms) - Level {self.game_level}", fontsize=10)
+        plt.xlabel("Algorithm", fontsize=8)
+        plt.ylabel("Duration (ms)", fontsize=8)
+        plt.xticks(rotation=45, fontsize=8)
         for bar in bars:
             yval = bar.get_height()
-            plt.text(bar.get_x() + bar.get_width() / 2, yval, f"{yval:.2f}", ha="center", va="bottom")
+            plt.text(bar.get_x() + bar.get_width() / 2, yval, f"{yval:.3f}", ha="center", va="bottom", fontsize=7)
 
-        # Plot Score
+        # Biểu đồ Score
         plt.subplot(3, 1, 2)
-        bars = plt.bar(algorithms, avg_scores, color="green", alpha=0.7)
-        plt.title(f"Average Score by Algorithm (Level {self.game_level})")
-        plt.xlabel("Algorithm")
-        plt.ylabel("Score")
+        bars = plt.bar(algorithms, avg_scores, color="green", alpha=0.7, width=0.3)
+        plt.title(f"Average Score - Level {self.game_level}", fontsize=10)
+        plt.xlabel("Algorithm", fontsize=8)
+        plt.ylabel("Score", fontsize=8)
+        plt.xticks(rotation=45, fontsize=8)
         for bar in bars:
             yval = bar.get_height()
-            plt.text(bar.get_x() + bar.get_width() / 2, yval, f"{yval:.0f}", ha="center", va="bottom")
+            plt.text(bar.get_x() + bar.get_width() / 2, yval, f"{yval:.0f}", ha="center", va="bottom", fontsize=7)
 
-        # Plot Lives
+        # Biểu đồ Lives
         plt.subplot(3, 1, 3)
-        bars = plt.bar(algorithms, avg_lives, color="red", alpha=0.7)
-        plt.title(f"Average Remaining Lives by Algorithm (Level {self.game_level})")
-        plt.xlabel("Algorithm")
-        plt.ylabel("Lives")
+        bars = plt.bar(algorithms, avg_lives, color="red", alpha=0.7, width=0.3)
+        plt.title(f"Average Remaining Lives - Level {self.game_level}", fontsize=10)
+        plt.xlabel("Algorithm", fontsize=8)
+        plt.ylabel("Lives", fontsize=8)
+        plt.xticks(rotation=45, fontsize=8)
         for bar in bars:
             yval = bar.get_height()
-            plt.text(bar.get_x() + bar.get_width() / 2, yval, f"{yval:.1f}", ha="center", va="bottom")
+            plt.text(bar.get_x() + bar.get_width() / 2, yval, f"{yval:.1f}", ha="center", va="bottom", fontsize=7)
 
-        plt.tight_layout()
-        plt.show()
+        plt.tight_layout(pad=2.0)  # Khoảng cách giữa các biểu đồ
+        plt.show()  # Hiển thị biểu đồ trên màn hình
         logging.info(f"Displayed statistics for Level {self.game_level}: {algorithms}")
 
     def draw_menu(self):
         """
-        Hiển thị menu chính với giao diện cải tiến.
+        Hiển thị menu chính với giao diện tối ưu cho 6 thuật toán và thống kê.
         """
         # Tạo nền với hiệu ứng gradient
         for y in range(self.HEIGHT):
@@ -1836,33 +2192,34 @@ class Game:
         self.screen.blit(self.menu_background, (0, 0), special_flags=pygame.BLEND_MULT)
 
         # Font và màu sắc
-        title_font = pygame.font.Font("freesansbold.ttf", 70)
-        menu_font = pygame.font.Font("freesansbold.ttf", 36)
-        desc_font = pygame.font.Font("freesansbold.ttf", 24)
-        shadow_offset = 3
+        title_font = pygame.font.Font("freesansbold.ttf", 60)
+        menu_font = pygame.font.Font("freesansbold.ttf", 32)
+        desc_font = pygame.font.Font("freesansbold.ttf", 20)
+        shadow_offset = 2
 
         # Tiêu đề
-        title_text = title_font.render("PAC-MAN AI GAME", True, (255, 255, 0))
-        title_shadow = title_font.render("PAC-MAN AI GAME", True, (100, 100, 0))
+        title_text = title_font.render("PAC-MAN AI", True, (255, 255, 0))
+        title_shadow = title_font.render("PAC-MAN AI", True, (100, 100, 0))
         title_rect = title_text.get_rect(center=(self.WIDTH_SCREEN // 2, self.HEIGHT * 0.1))
         self.screen.blit(title_shadow, (title_rect.x + shadow_offset, title_rect.y + shadow_offset))
         self.screen.blit(title_text, title_rect)
 
         # Các chế độ chơi
         modes = [
-            {"text": "1. Manual Control", "key": pygame.K_1, "desc": "Use arrow keys to play", "color": (255, 255, 255)},
-            {"text": "2. BFS Algorithm", "key": pygame.K_2, "desc": "AI with Breadth-First Search", "color": (200, 255, 200)},
-            {"text": "3. A* Algorithm", "key": pygame.K_3, "desc": "AI with A* Search", "color": (200, 200, 255)},
-            {"text": "4. Real Time A*", "key": pygame.K_4, "desc": "AI with Real Time A*", "color": (255, 200, 255)},
-            {"text": "5. Backtracking", "key": pygame.K_5, "desc": "AI with Backtracking", "color": (255, 200, 200)},
-            {"text": "6. Genetic Algorithm", "key": pygame.K_6, "desc": "AI with Genetic Algorithm", "color": (255, 200, 255)},
-            {"text": "7. Statistics", "key": pygame.K_7, "desc": "View game statistics", "color": (255, 255, 0)},  # Thêm nút thống kê
+            {"text": "1. Manual", "key": pygame.K_1, "desc": "Control with arrow keys", "color": (255, 255, 255)},
+            {"text": "2. BFS", "key": pygame.K_2, "desc": "Breadth-First Search AI", "color": (200, 255, 200)},
+            {"text": "3. A*", "key": pygame.K_3, "desc": "A* Search AI", "color": (200, 200, 255)},
+            {"text": "4. Real Time A*", "key": pygame.K_4, "desc": "Real-Time A* AI", "color": (255, 200, 255)},
+            {"text": "5. Backtracking", "key": pygame.K_5, "desc": "Backtracking AI", "color": (255, 200, 200)},
+            {"text": "6. Genetic", "key": pygame.K_6, "desc": "Genetic Algorithm AI", "color": (200, 255, 255)},
+            {"text": "7. DCQL", "key": pygame.K_7, "desc": "Deep Convolutional Q-Learning", "color": (255, 255, 200)},
+            {"text": "8. Statistics", "key": pygame.K_8, "desc": "View performance stats", "color": (255, 255, 0)},
         ]
 
         start_y = self.HEIGHT * 0.2
-        spacing = self.HEIGHT * 0.12
-        button_width = 500
-        button_height = 80
+        spacing = self.HEIGHT * 0.1
+        button_width = 400
+        button_height = 60
 
         for i, mode in enumerate(modes):
             # Vẽ nút nền
@@ -1873,13 +2230,13 @@ class Game:
             # Vẽ văn bản chính
             mode_text = menu_font.render(mode["text"], True, mode["color"])
             mode_shadow = menu_font.render(mode["text"], True, (50, 50, 50))
-            text_rect = mode_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing - 15))
+            text_rect = mode_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing - 10))
             self.screen.blit(mode_shadow, (text_rect.x + shadow_offset, text_rect.y + shadow_offset))
             self.screen.blit(mode_text, text_rect)
 
             # Vẽ mô tả
             desc_text = desc_font.render(mode["desc"], True, (200, 200, 200))
-            desc_rect = desc_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing + 25))
+            desc_rect = desc_text.get_rect(center=(self.WIDTH_SCREEN // 2, start_y + i * spacing + 20))
             self.screen.blit(desc_text, desc_rect)
 
         pygame.display.flip()

@@ -12,3 +12,5 @@ Level,Algorithm,Duration,Score,Lives
 3,A*,35.27,2460,3
 3,Backtracking,20.11,1980,0
 3,Genetic,75.21,2460,1
+
+1,A*,11.18,1010,3
