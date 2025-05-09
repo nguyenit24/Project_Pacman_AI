@@ -1,47 +1,50 @@
-import copy
-import csv  # Thêm thư viện CSV
+import os
+import csv
+import random
 import heapq
 import logging
 import math
-import os
-import random
-from collections import deque
-
-import matplotlib.pyplot as plt
-import numpy as np
+import copy
 import pygame
-
+import numpy as np
+import gymnasium as gym
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from collections import deque
+import matplotlib.pyplot as plt
+import ale_py
+from torch.cuda.amp import autocast, GradScaler
+from gymnasium.wrappers.frame_stack import FrameStack  # Sửa ở đây
 from board import boards
 from ghost import Ghost
 from logic import Pathfinder
 from player import Player
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import gymnasium as gym
-from collections import deque
 
-# Thêm lớp Network và Agent cho DCQL
 class Network(nn.Module):
     def __init__(self, action_size):
         super(Network, self).__init__()
-        self.conv1 = nn.Conv2d(3, 32, kernel_size=8, stride=4)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2)
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1)
-        self.fc1 = nn.Linear(64 * 7 * 7, 512)
-        self.fc2 = nn.Linear(512, action_size)
+        self.conv1 = nn.Conv2d(12, 16, kernel_size=8, stride=4)
+        self.bn1 = nn.BatchNorm2d(16)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=4, stride=2)
+        self.bn2 = nn.BatchNorm2d(32)
+        self.conv3 = nn.Conv2d(32, 32, kernel_size=3, stride=1)
+        self.bn3 = nn.BatchNorm2d(32)
+        self.fc1 = nn.Linear(32 * 22 * 16, 256)
+        self.fc2 = nn.Linear(256, action_size)
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        x = x.permute(0, 3, 1, 2) / 255.0  # Chuyển [H, W, C] thành [C, H, W] và chuẩn hóa
-        x = self.relu(self.conv1(x))
-        x = self.relu(self.conv2(x))
-        x = self.relu(self.conv3(x))
-        x = x.view(x.size(0), -1)
+        # x có dạng [B, T, H, W, C] từ FrameStack
+        B, T, H, W, C = x.shape
+        x = x.view(B, T * C, H, W) / 255.0  # Gộp T và C thành [B, T*C, H, W] và chuẩn hóa
+        x = self.relu(self.bn1(self.conv1(x)))
+        x = self.relu(self.bn2(self.conv2(x)))
+        x = self.relu(self.bn3(self.conv3(x)))
+        x = x.reshape(x.size(0), -1)
         x = self.relu(self.fc1(x))
         x = self.fc2(x)
         return x
-
 class Agent:
     def __init__(self, action_size):
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -50,8 +53,9 @@ class Agent:
         self.target_qnetwork = Network(action_size).to(self.device)
         self.optimizer = optim.Adam(self.local_qnetwork.parameters(), lr=5e-4)
         self.memory = deque(maxlen=10000)
-        self.minibatch_size = 64
+        self.minibatch_size = 32  # Giảm từ 128
         self.discount_factor = 0.99
+        logging.info(f"Agent initialized on device: {self.device}")
 
     def step(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
@@ -60,33 +64,36 @@ class Agent:
             self.learn(experiences)
 
     def act(self, state, epsilon=0.0):
-        state = torch.from_numpy(np.array(state)).float().unsqueeze(0).to(self.device)
+        state = torch.from_numpy(np.asarray(state)).float().unsqueeze(0).to(self.device)
         self.local_qnetwork.eval()
         with torch.no_grad():
             action_values = self.local_qnetwork(state)
         self.local_qnetwork.train()
-        if random.random() > epsilon:
-            return np.argmax(action_values.cpu().data.numpy())
-        return random.choice(np.arange(self.action_size))
+        action = np.argmax(action_values.cpu().data.numpy()) if random.random() > epsilon else random.choice(np.arange(self.action_size))
+        logging.info(f"Action chosen: {action}, Epsilon: {epsilon}, Q-values: {action_values.cpu().data.numpy().flatten()}")
+        return action
 
     def learn(self, experiences):
         states, actions, rewards, next_states, dones = zip(*experiences)
-        states = torch.from_numpy(np.array(states)).float().to(self.device)
-        actions = torch.from_numpy(np.array(actions)).long().unsqueeze(1).to(self.device)
-        rewards = torch.from_numpy(np.array(rewards)).float().unsqueeze(1).to(self.device)
-        next_states = torch.from_numpy(np.array(next_states)).float().to(self.device)
-        dones = torch.from_numpy(np.array(dones).astype(np.uint8)).float().unsqueeze(1).to(self.device)
+        states = torch.from_numpy(np.asarray(states)).float().to(self.device)
+        actions = torch.from_numpy(np.asarray(actions)).long().unsqueeze(1).to(self.device)
+        rewards = torch.from_numpy(np.asarray(rewards)).float().unsqueeze(1).to(self.device)
+        next_states = torch.from_numpy(np.asarray(next_states)).float().to(self.device)
+        dones = torch.from_numpy(np.asarray(dones).astype(np.uint8)).float().unsqueeze(1).to(self.device)
 
-        Q_targets_next = self.target_qnetwork(next_states).detach().max(1)[0].unsqueeze(1)
+        self.optimizer.zero_grad()
+        next_actions = self.local_qnetwork(next_states).detach().argmax(1).unsqueeze(1)
+        Q_targets_next = self.target_qnetwork(next_states).detach().gather(1, next_actions)
         Q_targets = rewards + (self.discount_factor * Q_targets_next * (1 - dones))
         Q_expected = self.local_qnetwork(states).gather(1, actions)
         loss = nn.MSELoss()(Q_expected, Q_targets)
-        self.optimizer.zero_grad()
+
         loss.backward()
         self.optimizer.step()
 
-    def update_target_network(self):
-        self.target_qnetwork.load_state_dict(self.local_qnetwork.state_dict())
+    def update_target_network(self, tau=0.005):
+        for target_param, local_param in zip(self.target_qnetwork.parameters(), self.local_qnetwork.parameters()):
+            target_param.data.copy_(tau * local_param.data + (1.0 - tau) * target_param.data)
 
     def save_model(self, model_path):
         try:
@@ -103,8 +110,7 @@ class Agent:
             self.target_qnetwork.eval()
             logging.info(f"Loaded model from {model_path}")
         except Exception as e:
-            logging.error(f"Failed to load model from {model_path}: {e}")
-
+            logging.error(f"Failed to load model to {model_path}: {e}")
 
 class Game:
     def __init__(self):
@@ -168,6 +174,7 @@ class Game:
         if gym is not None and torch is not None:
             try:
                 self.env = gym.make('ALE/MsPacman-v5', full_action_space=False, render_mode='rgb_array')
+                self.env = FrameStack(self.env, 4)  # Thêm Frame Stacking
                 self.dcql_agent = Agent(action_size=self.env.action_space.n)
                 logging.info("Successfully initialized DCQL environment with ALE/MsPacman-v5.")
                 if os.path.exists("dcql_model_episode_1000.pth"):
@@ -543,10 +550,10 @@ class Game:
         moving = False
         epsilon = 1.0
         epsilon_min = 0.01
-        epsilon_decay = 0.995
+        epsilon_decay = 0.999  # Giảm chậm hơn
         episodes = 1000
-        max_steps = 1000
-        update_target_frequency = 1000
+        max_steps = 2000  # Tăng từ 1000 lên 2000
+        update_target_frequency = 500  # Giảm từ 1000 xuống 500
         save_frequency = 100
         step_count = 0
 
@@ -566,6 +573,8 @@ class Game:
             self.start_time = pygame.time.get_ticks()
             self.data_saved = False
             episode_steps = 0
+            episode_reward = 0
+            dots_eaten = 0
 
             while not self.game_over and episode_steps < max_steps:
                 self.timer.tick(self.fps)
@@ -640,6 +649,20 @@ class Game:
 
                 action = self.dcql_agent.act(state, epsilon)
                 next_state, reward, done, truncated, info = self.env.step(action)
+                
+                # Reward Shaping
+                current_grid_pos = self.get_grid_pos(center_x, center_y)
+                dots = self.find_dots()
+                if dots:
+                    closest_dot = min(dots, key=lambda dot: self.heuristic(current_grid_pos, dot))
+                    distance_to_dot = self.heuristic(current_grid_pos, closest_dot)
+                    reward += 0.1 / (distance_to_dot + 1)  # Thưởng khi gần chấm
+                for ghost in self.ghosts:
+                    ghost_grid = self.get_grid_pos(ghost.center_x, ghost.center_y)
+                    if self.heuristic(current_grid_pos, ghost_grid) < 3:
+                        reward -= 0.1  # Phạt khi gần ma quỷ
+
+                episode_reward += reward
                 self.dcql_agent.step(state, action, reward, next_state, done or truncated)
                 state = next_state
                 step_count += 1
@@ -649,6 +672,7 @@ class Game:
                 new_lives = info.get('lives', self.player.lives)
 
                 if new_score > self.player.score:
+                    dots_eaten += 1
                     self.player.score = new_score
                     num1 = (self.HEIGHT - 50) // 32
                     num2 = self.WIDTH // 30
@@ -690,7 +714,7 @@ class Game:
                     moving = False
                     self.startup_counter = 0
                     if not self.data_saved:
-                        logging.info(f"DCQL game over at Level {self.game_level}")
+                        logging.info(f"DCQL game over at Level {self.game_level}, Reward={episode_reward:.2f}, Dots Eaten={dots_eaten}")
                         self.save_game_data(self.game_level, "DCQL", self.game_duration, self.player.score, self.player.lives)
 
                 self.player.draw(self.screen, self.counter)
@@ -731,15 +755,15 @@ class Game:
                     self.dcql_agent.save_model(f"dcql_model_episode_{episode}.pth")
 
                 if done or truncated or self.game_over or self.game_won:
+                    logging.info(f"Episode {episode + 1}: Reward={episode_reward:.2f}, Dots Eaten={dots_eaten}, Lives={self.player.lives}")
                     break
 
-            epsilon = max(epsilon_min, epsilon_decay * epsilon)
+            epsilon = max(epsilon_min, epsilon * epsilon_decay)
             logging.info(f"Episode {episode + 1}/{episodes} completed. Epsilon: {epsilon:.3f}, Score: {self.player.score}, Lives: {self.player.lives}")
 
         self.dcql_agent.save_model("dcql_model_episode_1000.pth")
         self.menu = True
         self.level_menu = True
-
 # Cập nhật run để thêm tùy chọn DCQL
     def run(self):
         run = True
@@ -1273,157 +1297,6 @@ class Game:
             self.draw_path()
             self.draw_ghost_radii(ghost_radius=3)
             pygame.display.flip()
-
-    # def run_rtastar(self):
-    #     run = True
-    #     self.game_mode = 5
-    #     moving = False
-    #     self.start_time = pygame.time.get_ticks()  # Thêm vào để chạy thử, xóa sau
-    #     self.game_level = 3  # Thêm vào để chạy thử, xóa đi
-
-    #     while run:
-    #         self.timer.tick(self.fps)
-    #         if self.paused:
-    #             self.draw_pause_menu()
-    #             for event in pygame.event.get():
-    #                 if event.type == pygame.QUIT:
-    #                     run = False
-    #                     return
-    #                 elif event.type == pygame.KEYDOWN:
-    #                     if event.key == pygame.K_p:
-    #                         self.paused = False
-    #                     elif event.key == pygame.K_1:
-    #                         self.paused = False
-    #                     elif event.key == pygame.K_2:
-    #                         self.reset()
-    #                         self.menu = True
-    #                         self.level_menu = True
-    #                         self.paused = False
-    #                         run = False
-    #                         return
-    #                     elif event.key == pygame.K_3:
-    #                         pygame.quit()
-    #                         return
-    #             pygame.display.flip()
-    #             continue
-
-    #         if not self.game_won and not self.game_over:
-    #             current_time = pygame.time.get_ticks()
-    #             self.game_duration = (current_time - self.start_time) / 1000.0
-
-    #         self.counter = (self.counter + 1) % 20
-    #         self.flicker = self.counter <= 3
-    #         if self.powerup:
-    #             self.power_counter += 1
-    #             if self.power_counter >= 600:
-    #                 self.powerup, self.power_counter = False, 0
-
-    #         if self.startup_counter < 30 and not self.game_over and not self.game_won:
-    #             moving = False
-    #             self.startup_counter += 1
-    #         else:
-    #             moving = True
-
-    #         if self.startup_counter_ghost < 60:
-    #             self.startup_counter_ghost += 1
-    #         else:
-    #             targets = self.get_targets()
-    #             for i, ghost in enumerate(self.ghosts):
-    #                 ghost.target = targets[i] if i < len(targets) else ""
-    #                 ghost.update_state(self.powerup, self.eaten_ghost, self.ghost_speeds[i], ghost.x_pos, ghost.y_pos)
-    #                 move_fn = ghost.move_clyde if ghost.in_box or ghost.dead else (ghost.move_blinky if i == 0 else ghost.move_pinky)
-    #                 if ghost.in_box:
-    #                     ghost.dead = False
-    #                 ghost.x_pos, ghost.y_pos, ghost.direction = move_fn()
-    #                 ghost.center_x = ghost.x_pos + 22
-    #                 ghost.center_y = ghost.y_pos + 22
-    #                 ghost.turns, ghost.in_box = ghost.check_collisions()
-
-    #         ghost_pos = self.predict_ghost_positions(self.ghosts, steps=4)
-
-    #         self.screen.fill("black")
-    #         self.draw_board()
-    #         self.draw_grid()
-    #         cx, cy = self.player.get_center()
-
-    #         self.game_won = all(1 not in row and 2 not in row for row in self.level)
-    #         if self.game_won:
-    #             if self.game_duration not in self.rtastar_times:
-    #                 self.rtastar_times.insert(0, self.game_duration)
-    #                 logging.info(f"RTA* completed Level {self.game_level} in {self.game_duration:.2f}s")
-    #                 self.save_game_data(self.game_level, "RTA*", self.game_duration, self.player.score, self.player.lives)
-    #         if self.player.lives <= 0:
-    #             self.game_over = True
-    #             moving = False
-    #             self.startup_counter = 0
-    #             if not self.data_saved:
-    #                 logging.info(f"RTA* game over at Level {self.game_level}")
-    #                 self.save_game_data(self.game_level, "RTA*", self.game_duration, self.player.score, self.player.lives)
-
-    #         self.player.draw(self.screen, self.counter)
-    #         self.draw_misc()
-    #         self.turns_allowed = self.check_position(cx, cy)
-
-    #         if moving and not self.game_won:
-    #             current_grid_pos = self.get_grid_pos(cx, cy)
-    #             if self.path_to_target and not self.is_path_safe(self.path_to_target[self.current_target_index :], ghost_pos, danger_radius=3):
-    #                 self.path_to_target = None
-    #                 self.current_target_index = 0
-    #             safe_dot, safe_point = self.find_dot_safe(current_grid_pos, ghost_pos)
-    #             if self.path_to_target is None or self.current_target_index >= len(self.path_to_target) or (self.path_to_target and self.path_to_target[0] != current_grid_pos):
-    #                 if safe_dot:
-    #                     # candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, [safe_dot], ghost_positions=ghost_pos, ghost_radius=5, depth_limit=10)
-    #                     candidate = self.logic.rta_star_realtime(current_grid_pos, safe_dot, ghost_positions=ghost_pos, ghost_radius=5)
-    #                 elif safe_point:
-    #                     # candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, [safe_point], ghost_positions=ghost_pos, ghost_radius=5, depth_limit=10)
-    #                     candidate = self.logic.rta_star_realtime(current_grid_pos, safe_point, ghost_positions=ghost_pos, ghost_radius=5)
-    #                 else:
-    #                     dots = self.find_dots()
-    #                     # candidate = self.logic.rta_star_avoid_ghosts(current_grid_pos, dots, ghost_positions=ghost_pos, ghost_radius=5, depth_limit=10) if dots else None
-    #                     candidate = self.logic.rta_star_realtime(current_grid_pos, dots, ghost_positions=ghost_pos, ghost_radius=5) if dots else None
-    #                 if candidate:
-    #                     self.path_to_target = candidate
-    #                     self.current_target_index = 1
-    #                 else:
-    #                     self.path_to_target = None
-    #             if self.path_to_target and self.current_target_index < len(self.path_to_target):
-    #                 next_grid_pos = self.path_to_target[self.current_target_index]
-    #                 if self.is_at_center(self.player.x, self.player.y, current_grid_pos):
-    #                     if current_grid_pos == next_grid_pos:
-    #                         self.current_target_index += 1
-    #                     else:
-    #                         self.player.direction = self.get_direction_from_path(current_grid_pos, next_grid_pos)
-    #                         if self.turns_allowed[self.player.direction]:
-    #                             self.player.move(self.turns_allowed)
-    #                 else:
-    #                     if self.turns_allowed[self.player.direction]:
-    #                         self.player.move(self.turns_allowed)
-
-    #         for ghost in self.ghosts:
-    #             ghost.draw()
-    #         self.powerup, self.power_counter = self.check_collisions()
-    #         if self.check_ghost_collisions():
-    #             moving = False
-    #             self.startup_counter = 0
-
-    #         for event in pygame.event.get():
-    #             if event.type == pygame.QUIT:
-    #                 run = False
-    #                 self.menu = True
-    #                 return
-    #             if event.type == pygame.KEYDOWN:
-    #                 if event.key == pygame.K_p:
-    #                     self.paused = True
-    #                 if event.key == pygame.K_SPACE and (self.game_over or self.game_won):
-    #                     self.reset()
-    #                     self.menu = True
-    #                     self.level_menu = True
-    #                     run = False
-    #                     return
-
-    #         self.draw_path()
-    #         self.draw_ghost_radii(ghost_radius=3)
-    #         pygame.display.flip()
 
     def run_RTA_star(self):
         run = True
