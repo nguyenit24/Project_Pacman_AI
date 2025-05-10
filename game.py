@@ -264,7 +264,7 @@ class Game:
         # Real-Time A* Times
         rtastar_title = self.font.render("RT A*:", True, "yellow")
         self.screen.blit(rtastar_title, (self.WIDTH_SCREEN - 150, 280))
-        for i, t in enumerate(self.rtastar_times[:4]):  # Fixed to use rtastar_times
+        for i, t in enumerate(self.rtastar_times[:4]):
             rtastar_time_text = self.font.render(f"{i+1}. {t:.2f}", True, "yellow")
             self.screen.blit(rtastar_time_text, (self.WIDTH_SCREEN - 150, 300 + i * 20))
 
@@ -1353,9 +1353,11 @@ class Game:
 
             # Kiểm tra điều kiện thắng
             self.game_won = all(1 not in row and 2 not in row for row in self.level)
-            if self.game_won and self.game_duration not in self.astar_times:
-                self.astar_times.insert(0, self.game_duration)
-
+            if self.game_won:
+                if self.game_duration not in self.rtastar_times:  # Sửa từ astar_times thành rtastar_times
+                    self.rtastar_times.insert(0, self.game_duration)
+                    logging.info(f"RTA* completed Level {self.game_level} in {self.game_duration:.2f}s")
+                    self.save_game_data(self.game_level, "RTA*", self.game_duration, self.player.score, self.player.lives)
             # Vẽ marker (tùy chọn)
             pygame.draw.circle(self.screen, "black", (center_x, center_y), 20, 2)
             self.player.draw(self.screen, self.counter)
@@ -1456,9 +1458,12 @@ class Game:
                 pygame.display.flip()
                 continue
 
-            if not self.game_won and not self.game_over:
-                current_time = pygame.time.get_ticks()
-                self.game_duration = (current_time - self.start_time) / 1000.0
+            self.game_won = all(1 not in row and 2 not in row for row in self.level)
+            if self.game_won:
+                if self.game_duration not in self.bfs_times:
+                    self.bfs_times.insert(0, self.game_duration)
+                    logging.info(f"BFS completed Level {self.game_level} in {self.game_duration:.2f}s")
+                    self.save_game_data(self.game_level, "BFS", self.game_duration, self.player.score, self.player.lives)
 
             if self.counter < 19:
                 self.counter += 1
