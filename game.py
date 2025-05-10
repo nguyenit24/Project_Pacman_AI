@@ -1508,7 +1508,7 @@ class Game:
 
             self.game_won = all(1 not in row and 2 not in row for row in self.level)
             if self.game_won and not self.data_saved:
-                if not any(abs(self.game_duration - t) < 0.01 for t in self.bfs_times):  # Tránh trùng lặp
+                if not any(abs(self.game_duration - t) < 0.01 for t in self.bfs_times): 
                     self.bfs_times.insert(0, self.game_duration)
                     logging.info(f"BFS completed Level {self.game_level} in {self.game_duration:.2f}s")
                     self.save_game_data(self.game_level, "BFS", self.game_duration, self.player.score, self.player.lives)
