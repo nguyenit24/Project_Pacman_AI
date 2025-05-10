@@ -241,7 +241,7 @@ class Game:
             gameover_text = self.font.render("Victory! Space bar to restart!", True, "green")
             self.screen.blit(gameover_text, (100, 300))
 
-        pygame.draw.rect(self.screen, "gray", [self.WIDTH_SCREEN - 160, 10, 150, self.HEIGHT // 2 - 50], 0, 5)
+        pygame.draw.rect(self.screen, "gray", [self.WIDTH_SCREEN - 160, 10, 150, self.HEIGHT - 50], 0, 5)
         time_title = self.font.render("Time (s)", True, "white")
         self.screen.blit(time_title, (self.WIDTH_SCREEN - 150, 20))
         current_time_text = self.font.render(f"Current: {self.game_duration:.2f}", True, "white")
@@ -1431,6 +1431,8 @@ class Game:
         run = True
         self.game_mode = 1
         moving = False
+        self.start_time = pygame.time.get_ticks()  # Khởi tạo start_time
+        self.data_saved = False  # Reset data_saved
 
         while run:
             self.timer.tick(self.fps)
@@ -1458,12 +1460,9 @@ class Game:
                 pygame.display.flip()
                 continue
 
-            self.game_won = all(1 not in row and 2 not in row for row in self.level)
-            if self.game_won:
-                if self.game_duration not in self.bfs_times:
-                    self.bfs_times.insert(0, self.game_duration)
-                    logging.info(f"BFS completed Level {self.game_level} in {self.game_duration:.2f}s")
-                    self.save_game_data(self.game_level, "BFS", self.game_duration, self.player.score, self.player.lives)
+            if not self.game_won and not self.game_over:
+                current_time = pygame.time.get_ticks()
+                self.game_duration = (current_time - self.start_time) / 1000.0  # Tính thời gian
 
             if self.counter < 19:
                 self.counter += 1
@@ -1508,11 +1507,13 @@ class Game:
             center_x, center_y = self.player.get_center()
 
             self.game_won = all(1 not in row and 2 not in row for row in self.level)
-            if self.game_won:
-                if self.game_duration not in self.bfs_times:
+            if self.game_won and not self.data_saved:
+                if not any(abs(self.game_duration - t) < 0.01 for t in self.bfs_times):  # Tránh trùng lặp
                     self.bfs_times.insert(0, self.game_duration)
                     logging.info(f"BFS completed Level {self.game_level} in {self.game_duration:.2f}s")
                     self.save_game_data(self.game_level, "BFS", self.game_duration, self.player.score, self.player.lives)
+                    
+
             if self.player.lives <= 0:
                 self.game_over = True
                 moving = False
@@ -1520,6 +1521,7 @@ class Game:
                 if not self.data_saved:
                     logging.info(f"BFS game over at Level {self.game_level}")
                     self.save_game_data(self.game_level, "BFS", self.game_duration, self.player.score, self.player.lives)
+                   
             pygame.draw.circle(self.screen, "black", (center_x, center_y), 20, 2)
             self.player.draw(self.screen, self.counter)
             self.draw_misc()
