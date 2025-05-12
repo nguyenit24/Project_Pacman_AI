@@ -171,7 +171,7 @@ Dưới đây là mô tả trực quan về cách các thuật toán AI khác nh
 
 ![Thống kê Level 3](assets/stats/level3_stats.jpg)
 
-- Ở môi trường level 3, có 2 ghost di chuyển liên tục, tăng độ khó và phức tạp của môi trường động và đa mục tiêu (vừa ăn pellet vừa tránh ghost). Vì vậy có rất nhiều agent không thể hoàn thiện: 
+Ở môi trường level 3, có 2 ghost di chuyển liên tục, tăng độ khó và phức tạp của môi trường động và đa mục tiêu (vừa ăn pellet vừa tránh ghost). Vì vậy có rất nhiều agent không thể hoàn thiện: 
 + A*: A* vẫn đem lại hiệu suất tốt nhất với thời gian chạy nhanh nhất và khả năng tránh ghost tốt để không bị mất mạng nào. Giải thuật A* tính toán toàn cục kết hợp với việc tối ưu hàm heuristic, phản ứng thời gian thực và tái tính toán đường đi, cùng với đó là việc thêm penalty phạt nặng khi gần ghost đã mang lại hiệu quả tương đối ổn định cho cả hai mục tiêu ăn pellet và tránh ghost. Các yếu tố trên vẫn đáp ứng được trong môi trường hai ghost. 
 + RTA*: RTA* cũng hoàn thiện trong màn chơi này. Thuật toán thể hiện được khả năng phản ứng nhanh trước các thay đổi của môi trường (ở đây là vị trí ghost thay đổi liên tục) từ đó có khả năng tránh ghost hoàn hảo. Tuy nhiên điểm yếu về không tối ưu toàn cục tốt đã làm cho agent mất nhiều thời gian hơn để hoàn thành mục tiêu ăn hết viên pellet. 
 + Genetic: GA không hoàn thiện trong màn chơi này. Kết quả trên chứng tỏ hàm fitness đã bộc lộ điểm yếu trong việc thực hiện cả hai mục tiêu ăn pellet và tránh ghost. GA hoạt động theo thế hệ, cần nhiều thời gian để tính toán quần thể, lai ghép, đột biến, và đánh giá fitness. Trong môi trường động, vị trí của ma thay đổi liên tục, nhưng GA không thể cập nhật đường đi theo thời gian thực vì nó dựa trên một quần thể tĩnh tại mỗi lần chạy. 
