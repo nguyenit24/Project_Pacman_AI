@@ -95,6 +95,12 @@ Dưới đây là mô tả trực quan về cách các thuật toán AI khác nh
 
 ![Thống kê Level 1](assets/stats/level1_stats.jpg)
 
+Ở môi trường level 1, không có ghost thì có thể coi là môi trường tĩnh. Vì vậy hầu hết các agent chạy các thuật toán đều đạt được kết quả tốt và hoàn thiện. Cụ thể:
++ Thuật toán A*: A* có thời gian hoàn thành nhanh nhất nhưng số điểm thấp hơn một chút. Ở đây A* đã thể hiện được điểm mạnh trong việc chọn con đường tối ưu trong tương lai và khả năng nhìn xa vì vậy tối ưu tốc độ ăn các viên thức ăn và tránh được ghost. 
++ BFS, Backtracking, Genetic: ba thuật toán trên đem lại hiệu suất tương đối đồng đều với thời gian chạy không chênh lệch nhiều. Điều đó cho thấy ba chiến lược tìm kiếm với môi trường board trên đem lại hiệu năng khá tương đồng: duyệt theo chiều rộng với BFS, duyệt theo chiều sâu kết hợp ràng buộc và heuristic của Backtracking và giải thuật di truyền với hàm fitness đã mang lại đánh giá khá chính xác và tối ưu số điểm. 
++ RTA*: Thuật toán có độ hoàn thiện nhưng chưa tối ưu với môi trường tĩnh do RTA* chỉ nhìn được không gian cục bộ 5 ô về 4 hướng. Vì vậy dễ bị mắc bẫy cục bộ trong khi chưa tìm được đường tới pallet. 
++ DCQL: agent chưa được train đủ lâu và bộ dữ liệu chưa nhiều nên kết quả còn khá khiêm tốn.
+
 ### Level 2 (Màn chơi với nhiều ma hơn)
 
 - **BFS (Tìm kiếm theo chiều rộng):**
@@ -132,6 +138,13 @@ Dưới đây là mô tả trực quan về cách các thuật toán AI khác nh
 #### Thống kê Level 2
 
 ![Thống kê Level 2](assets/stats/level2_stats.jpg)
+
+Ở môi trường level 2, có 1 ghost di chuyển liên tục, thay đổi tính chất môi trường từ tĩnh đơn mục tiêu thành động và đa mục tiêu (vừa ăn pellet vừa tránh ghost). Vì vậy đã có một số agent bộc lộ điểm yếu trong môi trường động và thay đổi liên tục:
++ A*: A* vẫn đem lại hiệu suất tốt nhất với thời gian chạy nhanh nhất và khả năng tránh ghost tốt để không bị mất mạng nào. Giải thuật A* tính toán toàn cục kết hợp với việc tối ưu hàm heuristic, phản ứng thời gian thực và tái tính toán đường đi, cùng với đó là việc thêm penalty phạt nặng khi gần ghost đã mang lại hiệu quả tương đối ổn định cho cả hai mục tiêu ăn pellet và tránh ghost. 
++ RTA*: RTA* cũng hoàn thiện trong màn chơi này. Thuật toán thể hiện được khả năng phản ứng nhanh trước các thay đổi của môi trường (ở đây là vị trí ghost thay đổi liên tục) từ đó có khả năng tránh ghost hoàn hảo. Tuy nhiên điểm yếu về không tối ưu toàn cục tốt đã làm cho agent mất nhiều thời gian hơn để hoàn thành mục tiêu ăn hết viên pellet. 
++ Genetic: Genetic cũng hoàn thiện trong màn chơi này dù mất thời gian lâu nhất. Kết quả trên chứng tỏ hàm fitness là tương đối hiệu quả trong việc thực hiện cả hai mục tiêu ăn pellet và tránh ghost, thể hiện điểm mạnh của thuật toán trong môi trường phức tạp và mục tiêu không xác định. Tuy nhiên việc mất nhiều thời gian có lẽ do hạn chế trong kích thước quần thể(population_size = 60 và max_generations = 200), tỉ lệ đột biến chưa đủ để thoát khỏi cục bộ địa phương hoặc cơ chế chọn lọc chưa đủ đa dạng (hiện là giữ lại 50% cá thể tốt nhất). 
++ BFS, Backtracking: Vẫn có số điểm khá cao nhưng lại không hoàn thiện trong màn chơi. Agent mất hết số mạng do va chạm với ghost. Điều đó thể hiện đúng bản chất của BFS là thuật toán tìm kiếm mù, vì vậy không thể xác định được vị trí của ghost để né. Trong khi backtracking thì cũng không phải là thuật toán tối ưu để xử lý thay đổi thời gian thực và liên tục, ở đây là vị trí của ghost.
++ DCQL: agent chưa được train đủ lâu và bộ dữ liệu chưa nhiều nên kết quả còn khá khiêm tốn.
 
 ### Level 3 (Màn chơi phức tạp)
 
